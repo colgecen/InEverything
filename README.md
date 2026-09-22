@@ -69,3 +69,4 @@ docs/          mft araştırması, benchmark notları
 Her görev bitiminde: `cargo fmt` + `cargo clippy -- -D warnings` +
 `cargo test` + `cargo build` yeşilse Türkçe conventional commit + push.
 Yerel toolchain yoksa kapı GitHub Actions (`ci`) üzerinde koşar.
+

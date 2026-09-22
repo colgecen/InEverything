@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 use std::sync::{
-    Arc, RwLock,
     atomic::{AtomicBool, Ordering},
+    Arc, RwLock,
 };
 
-use fastfind::indexer::{TaramaDurumu, sistemi_tara};
+use fastfind::indexer::{sistemi_tara, TaramaDurumu};
 use fastfind::model::FileItem;
 use fastfind::search::ara;
 

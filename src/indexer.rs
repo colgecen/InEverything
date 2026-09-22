@@ -5,13 +5,13 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use anyhow::{Context, Result};
 use crossbeam_channel::Sender;
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher, event::ModifyKind};
+use notify::{event::ModifyKind, Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 

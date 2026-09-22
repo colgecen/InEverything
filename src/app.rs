@@ -1,8 +1,8 @@
 //! Grafik arayüz: eframe/egui tabanlı ana pencere.
 
 use std::sync::{
-    Arc, RwLock,
     atomic::{AtomicBool, Ordering},
+    Arc, RwLock,
 };
 use std::time::{Duration, SystemTime};
 
