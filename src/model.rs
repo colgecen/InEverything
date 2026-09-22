@@ -74,7 +74,9 @@ impl SearchQuery {
         let kirpilmis = ham.trim().to_string();
         let kucuk = kirpilmis.to_lowercase();
         let uzanti_filtresi = if let Some(kalan) = kucuk.strip_prefix("*.") {
-            Self::temiz_uzanti(kalan)
+            // Birleşik sorgu da olabilir: "*.pdf rapor" -> uzantı "pdf".
+            let ilk = kalan.split_whitespace().next().unwrap_or("");
+            Self::temiz_uzanti(ilk)
         } else if kucuk.starts_with('.')
             && !kucuk.contains([' ', '*', '/', '\\'])
             && kucuk.len() > 1
@@ -137,6 +139,13 @@ mod testler {
     fn duz_metin_filtresiz_cozulur() {
         let sorgu = SearchQuery::cozumle("rapor 2026");
         assert_eq!(sorgu.uzanti_filtresi, None);
+        assert!(!sorgu.bos_mu());
+    }
+
+    #[test]
+    fn birlesik_sorguda_uzanti_cozulur() {
+        let sorgu = SearchQuery::cozumle("*.pdf rapor");
+        assert_eq!(sorgu.uzanti_filtresi.as_deref(), Some("pdf"));
         assert!(!sorgu.bos_mu());
     }
 
