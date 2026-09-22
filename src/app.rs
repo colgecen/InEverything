@@ -141,11 +141,7 @@ impl eframe::App for FastFindApp {
         self.kanallari_yokla();
         ctx.request_repaint_after(Duration::from_millis(250));
 
-        let dizindeki_sayi = self
-            .indeks
-            .read()
-            .map(|kilit| kilit.len())
-            .unwrap_or(0);
+        let dizindeki_sayi = self.indeks.read().map(|kilit| kilit.len()).unwrap_or(0);
         let tarama_bitti = self.tarama.bitti.load(Ordering::Relaxed);
         let taranan = self.tarama.sayi.load(Ordering::Relaxed);
 

@@ -57,11 +57,7 @@ pub fn klasoru_tara(kok: &Path) -> Vec<FileItem> {
 
 /// Verilen köklerin tamamını tara. `iptal` önceden kurulursa boş döner;
 /// tarama sırasında kurulursa kalan dosyalar atlanır.
-pub fn sistemi_tara(
-    kokler: &[PathBuf],
-    durum: &TaramaDurumu,
-    iptal: &AtomicBool,
-) -> Vec<FileItem> {
+pub fn sistemi_tara(kokler: &[PathBuf], durum: &TaramaDurumu, iptal: &AtomicBool) -> Vec<FileItem> {
     let mut tumu = Vec::new();
     for kok in kokler {
         if iptal.load(Ordering::Relaxed) {
@@ -82,9 +78,7 @@ pub fn sistemi_tara(
                     .metadata()
                     .map(|m| (m.len(), m.modified().ok()))
                     .unwrap_or((0, None));
-                durum
-                    .sayi
-                    .fetch_add(1, Ordering::Relaxed);
+                durum.sayi.fetch_add(1, Ordering::Relaxed);
                 Some(FileItem::dosya(yol, boyut, degistirilme))
             })
             .collect();

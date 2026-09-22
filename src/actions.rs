@@ -43,22 +43,16 @@ pub fn konumu_ac(yol: &Path) -> Result<()> {
 /// Dosyayı hedef klasöre kopyalar, yeni yolu döndürür.
 pub fn dosyayi_kopyala(kaynak: &Path, hedef_klasor: &Path) -> Result<PathBuf> {
     let hedef = hedef_yolu_hesapla(kaynak, hedef_klasor)?;
-    std::fs::copy(kaynak, &hedef).with_context(|| {
-        format!(
-            "kopyalanamadı: {} -> {}",
-            kaynak.display(),
-            hedef.display()
-        )
-    })?;
+    std::fs::copy(kaynak, &hedef)
+        .with_context(|| format!("kopyalanamadı: {} -> {}", kaynak.display(), hedef.display()))?;
     Ok(hedef)
 }
 
 /// Dosyayı hedef klasöre taşır, yeni yolu döndürür.
 pub fn dosyayi_tasi(kaynak: &Path, hedef_klasor: &Path) -> Result<PathBuf> {
     let hedef = hedef_yolu_hesapla(kaynak, hedef_klasor)?;
-    std::fs::rename(kaynak, &hedef).with_context(|| {
-        format!("taşınamadı: {} -> {}", kaynak.display(), hedef.display())
-    })?;
+    std::fs::rename(kaynak, &hedef)
+        .with_context(|| format!("taşınamadı: {} -> {}", kaynak.display(), hedef.display()))?;
     Ok(hedef)
 }
 

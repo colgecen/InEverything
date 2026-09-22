@@ -150,7 +150,9 @@ mod testler {
         let tutamac = arama_gorevlisi_baslat(indeks, istek_rx, sonuc_tx);
 
         istek_tx.send("foto".to_string()).expect("gönder");
-        let cikti = sonuc_rx.recv_timeout(Duration::from_secs(5)).expect("yanıt");
+        let cikti = sonuc_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("yanıt");
         assert_eq!(cikti, vec![2]);
 
         drop(istek_tx);
