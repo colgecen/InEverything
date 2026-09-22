@@ -49,6 +49,25 @@ jobs:
       - name: clippy (uyarı = hata)
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: clippy çıktısını açıkla
+        if: failure()
+        shell: pwsh
+        run: |
+          $cikti = (cargo clippy --all-targets --message-format short 2>&1 | Out-String) -split "`r?`n" | Select-Object -First 150
+          $parca = @()
+          $sayac = 1
+          foreach ($s in ($cikti + '__SON__')) {
+            if (($s -eq '__SON__') -or ($parca.Count -ge 25)) {
+              if ($parca.Count -gt 0) {
+                $mesaj = ($parca -join "`n") -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+                Write-Host "::notice title=clippy-cikti-$sayac::$mesaj"
+                $sayac += 1
+                $parca = @()
+              }
+            }
+            if ($s -ne '__SON__') { $parca += $s }
+          }
+
       - name: testler
         run: cargo test --locked
 
