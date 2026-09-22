@@ -1,0 +1,24 @@
+# Rust / Cargo
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Derlenen çıktılar
+*.exe
+*.msi
+
+# IDE ve editör
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# İşletim sistemi
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Yerel yapılandırma (örnek dışı)
+fastfind-config.json

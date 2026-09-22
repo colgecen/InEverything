@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  dogrulama:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust stable kur
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Onbellek
+        uses: Swatinem/rust-cache@v2
+
+      - name: fmt kontrolü
+        run: cargo fmt --all -- --check
+
+      - name: clippy (uyarı = hata)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: testler
+        run: cargo test --locked
+
+      - name: derleme
+        run: cargo build --locked

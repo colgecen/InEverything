@@ -1,0 +1,44 @@
+# FastFind Yapılacaklar Listesi
+
+> Her görev bitiminde kapılar koşar: `cargo fmt` + `cargo clippy` + `cargo test` + `cargo build`.
+> Yeşilse Türkçe conventional commit + `git push`. Kırmızıysa push yok.
+
+## Aşama 0: Ortam ve İskelet
+- [ ] Windows kurulum betiğini ekle (`scripts/kurulum-windows.ps1`)
+- [ ] CI iş akışını ekle (fmt + clippy + test + build)
+- [ ] Rust proje iskeletini oluştur (`cargo init --bin fastfind`)
+- [ ] Bağımlılıkları `Cargo.toml` dosyasına ekle
+
+## Aşama 1: Proje Kurulumu ve Mimarisi
+- [ ] Temel veri yapılarını tanımla (`FileItem`, `SearchQuery`, `AppConfig`)
+- [ ] Yapılandırma yükleme/kaydetme (`config.rs`)
+- [ ] Modül iskeletini kur (`app`, `indexer`, `search`, `actions`)
+
+## Aşama 2: İndeksleme Motoru (Core)
+- [ ] Sistem sürücülerini tespit et (C:\, D:\ vb.)
+- [ ] Paralel dosya tarama (`walkdir` + `rayon`)
+- [ ] Canlı dosya izleme (`notify` crate)
+- [ ] RAM içi indeks optimizasyonu (`Arc<RwLock<Vec>>` + atomik sayaçlar)
+- [ ] NTFS MFT araştırmasını belgele (uygulama ileri faza bırakıldı)
+
+## Aşama 3: Arama Motoru
+- [ ] Tam eşleşme ve uzantı filtreleme (`*.ext`)
+- [ ] Bulanık arama (`fuzzy-matcher` skim)
+- [ ] Asenkron arama kanalı (`crossbeam-channel`, UI kilitlenmez)
+
+## Aşama 4: Grafik Kullanıcı Arayüzü (GUI)
+- [ ] Ana pencere ve koyu tema (eframe/egui)
+- [ ] Üst arama çubuğu (otomatik odaklı)
+- [ ] Sanallaştırılmış sonuç listesi (10 bin+ satır akıcı)
+- [ ] Kolonlar: Ad, Yol, Boyut, Değiştirilme
+
+## Aşama 5: Dosya İşlemleri ve Sağ Tık Menüsü
+- [ ] Yolu panoya kopyalama (`arboard`)
+- [ ] Kopyala / taşı (hedef klasörlü)
+- [ ] Varsayılan uygulamayla aç + konumu aç
+- [ ] Sağ tık bağlam menüsü
+
+## Aşama 6: Optimizasyon ve Benchmark
+- [ ] Bellek ve gecikme ölçüm notları (`docs/benchmark.md`)
+- [ ] Başlangıç süresi ve release derlemesi
+- [ ] README ve son rötuşlar
