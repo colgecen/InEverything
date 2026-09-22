@@ -21,9 +21,15 @@ eframe/egui). Durum: **MVP kaynak kodu tamam**, CI kapısı aktif.
 
 ## Kurulum ve çalıştırma
 
+Tek komut (eksikse Rust + Build Tools + crate'leri otomatik kurar):
+
 ```powershell
-# Ortam kurulumu + kapılar (fmt, clippy, test, build)
-powershell -ExecutionPolicy Bypass -File scripts\kurulum-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\calistir-windows.ps1
+```
+
+Seçenekler: `-Derle` (çalıştırmadan release derler), `-Test` (önce testleri koşar).
+
+Elle kurulum + kapılar (fmt, clippy, test, build):
 
 # Geliştirme
 cargo test

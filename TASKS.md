@@ -5,6 +5,7 @@
 
 ## Aşama 0: Ortam ve İskelet
 - [x] Windows kurulum betiğini ekle (`scripts/kurulum-windows.ps1`)
+- [x] Çalıştırınca bağımlılıkları otomatik kuran betiği ekle (`scripts/calistir-windows.ps1`)
 - [x] CI iş akışını ekle (fmt + clippy + test + build)
 - [x] Rust proje iskeletini oluştur (`cargo init --bin fastfind`)
 - [x] Bağımlılıkları `Cargo.toml` dosyasına ekle
