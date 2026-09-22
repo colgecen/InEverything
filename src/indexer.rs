@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, RwLock,
 };
 
 use anyhow::{Context, Result};
@@ -26,15 +26,73 @@ pub struct TaramaDurumu {
     pub sayi: Arc<std::sync::atomic::AtomicUsize>,
 }
 
-/// Var olan Windows sürücü köklerini döndürür (`C:\`, `D:\`, ...).
+/// Var olan sürücü/kök dizinleri döndürür.
+/// Windows: `C:\`, `D:\`, ...
+/// Linux: `/home`, `/tmp`, `/etc`, `/opt`, `/var`
 pub fn suruculeri_bul() -> Vec<PathBuf> {
-    (b'C'..=b'Z')
-        .map(|harf| PathBuf::from(format!("{}:\\", harf as char)))
+    #[cfg(target_family = "windows")]
+    {
+        (b'C'..=b'Z')
+            .map(|harf| PathBuf::from(format!("{}:\\", harf as char)))
+            .filter(|kok| kok.exists())
+            .collect()
+    }
+    #[cfg(target_family = "unix")]
+    {
+        vec![
+            PathBuf::from("/home"),
+            PathBuf::from("/tmp"),
+            PathBuf::from("/etc"),
+            PathBuf::from("/opt"),
+            PathBuf::from("/var"),
+        ]
+        .into_iter()
         .filter(|kok| kok.exists())
         .collect()
+    }
 }
 
-/// Tek klasör ağacını paralel tara, bulunan dosyaları döndür.
+/// Verilen köklerin tamamını tara ve her drive'tan dosya buldukça indekse ekle.
+/// `iptal` önceden kurulursa boş döner; tarama sırasında kurulursa kalan atlanır.
+pub fn sistemi_tara_incele(
+    kokler: &[PathBuf],
+    durum: &TaramaDurumu,
+    iptal: &AtomicBool,
+    indeks: Arc<RwLock<Vec<FileItem>>>,
+) {
+    for kok in kokler {
+        if iptal.load(Ordering::Relaxed) {
+            break;
+        }
+        let bulunan: Vec<FileItem> = WalkDir::new(kok)
+            .follow_links(false)
+            .into_iter()
+            .par_bridge()
+            .filter_map(|girdi| girdi.ok())
+            .filter(|girdi| girdi.file_type().is_file())
+            .filter_map(|girdi| {
+                if iptal.load(Ordering::Relaxed) {
+                    return None;
+                }
+                let yol = girdi.path().to_path_buf();
+                let (boyut, degistirilme) = girdi
+                    .metadata()
+                    .map(|m| (m.len(), m.modified().ok()))
+                    .unwrap_or((0, None));
+                durum.sayi.fetch_add(1, Ordering::Relaxed);
+                Some(FileItem::dosya(yol, boyut, degistirilme))
+            })
+            .collect();
+        if !bulunan.is_empty() {
+            if let Ok(mut kilit) = indeks.write() {
+                kilit.extend(bulunan);
+            }
+        }
+    }
+    durum.bitti.store(true, Ordering::Relaxed);
+}
+
+/// Tek klasör ağacını paralel tara, bulunan dosyaları döndürür.
 ///
 /// Sembolik bağlar izlenmez; okunamayan girdiler sessizce atlanır.
 pub fn klasoru_tara(kok: &Path) -> Vec<FileItem> {
@@ -141,7 +199,7 @@ pub fn izlemeyi_baslat(kokler: &[PathBuf], gonder: Sender<Degisiklik>) -> Result
         if kok.exists() {
             izleyici
                 .watch(kok, RecursiveMode::Recursive)
-                .with_context(|| format!("izlenemedi: {}", kok.display()))?;
+                .with_context(|| format!("izlenmedi: {}", kok.display()))?;
         }
     }
     Ok(CanliIzleyici {
@@ -203,5 +261,20 @@ mod testler {
         let kok = dizin.path().to_path_buf();
         let bulunan = sistemi_tara(std::slice::from_ref(&kok), &durum, &iptal);
         assert!(bulunan.is_empty());
+    }
+
+    #[test]
+    fn incele_indeksi_artirir() {
+        let dizin = ornek_agac();
+        let durum = TaramaDurumu::default();
+        let iptal = AtomicBool::new(false);
+        let indeks: Arc<RwLock<Vec<FileItem>>> = Arc::new(RwLock::new(Vec::new()));
+        let kokler = vec![dizin.path().to_path_buf()];
+        sistemi_tara_incele(&kokler, &durum, &iptal, Arc::clone(&indeks));
+        assert!(durum.bitti.load(Ordering::Relaxed));
+        let okunan = indeks.read().unwrap();
+        assert_eq!(okunan.len(), 3);
+        drop(okunan);
+        assert_eq!(durum.sayi.load(Ordering::Relaxed), 3);
     }
 }

@@ -1,0 +1,28 @@
+name: surum
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  derle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust stable kur
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Onbellek
+        uses: Swatinem/rust-cache@v2
+
+      - name: Release derle
+        run: cargo build --release --locked
+
+      - name: exe yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastfind-windows
+          path: target/release/fastfind.exe
