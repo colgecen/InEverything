@@ -24,6 +24,28 @@ jobs:
       - name: fmt kontrolü
         run: cargo fmt --all -- --check
 
+      - name: fmt farkını açıkla
+        if: failure()
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          $fark = git diff -- src tests
+          if ([string]::IsNullOrWhiteSpace($fark)) { exit 0 }
+          $satirlar = $fark -split "`r?`n"
+          $parca = @()
+          $sayac = 1
+          foreach ($s in ($satirlar + '__SON__')) {
+            if (($s -eq '__SON__') -or ($parca.Count -ge 30)) {
+              if ($parca.Count -gt 0) {
+                $mesaj = ($parca -join "`n") -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+                Write-Host "::notice title=fmt-farki-$sayac::$mesaj"
+                $sayac += 1
+                $parca = @()
+              }
+            }
+            if ($s -ne '__SON__') { $parca += $s }
+          }
+
       - name: clippy (uyarı = hata)
         run: cargo clippy --all-targets -- -D warnings
 
