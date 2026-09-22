@@ -27,16 +27,16 @@
 - [x] Asenkron arama kanalı (`crossbeam-channel`, UI kilitlenmez)
 
 ## Aşama 4: Grafik Kullanıcı Arayüzü (GUI)
-- [ ] Ana pencere ve koyu tema (eframe/egui)
-- [ ] Üst arama çubuğu (otomatik odaklı)
-- [ ] Sanallaştırılmış sonuç listesi (10 bin+ satır akıcı)
-- [ ] Kolonlar: Ad, Yol, Boyut, Değiştirilme
+- [x] Ana pencere ve koyu tema (eframe/egui)
+- [x] Üst arama çubuğu (otomatik odaklı)
+- [x] Sanallaştırılmış sonuç listesi (10 bin+ satır akıcı)
+- [x] Kolonlar: Ad, Yol, Boyut, Değiştirilme
 
 ## Aşama 5: Dosya İşlemleri ve Sağ Tık Menüsü
-- [ ] Yolu panoya kopyalama (`arboard`)
-- [ ] Kopyala / taşı (hedef klasörlü)
-- [ ] Varsayılan uygulamayla aç + konumu aç
-- [ ] Sağ tık bağlam menüsü
+- [x] Yolu panoya kopyalama (`arboard`)
+- [x] Kopyala / taşı (hedef klasörlü)
+- [x] Varsayılan uygulamayla aç + konumu aç
+- [x] Sağ tık bağlam menüsü
 
 ## Aşama 6: Optimizasyon ve Benchmark
 - [ ] Bellek ve gecikme ölçüm notları (`docs/benchmark.md`)
