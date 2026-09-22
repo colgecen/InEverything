@@ -19,7 +19,7 @@
 - [x] Paralel dosya tarama (`walkdir` + `rayon`)
 - [x] Canlı dosya izleme (`notify` crate)
 - [x] RAM içi indeks optimizasyonu (`Arc<RwLock<Vec>>` + atomik sayaçlar)
-- [ ] NTFS MFT araştırmasını belgele (uygulama ileri faza bırakıldı)
+- [x] NTFS MFT araştırmasını belgele (uygulama ileri faza bırakıldı)
 
 ## Aşama 3: Arama Motoru
 - [x] Tam eşleşme ve uzantı filtreleme (`*.ext`)
@@ -39,6 +39,6 @@
 - [x] Sağ tık bağlam menüsü
 
 ## Aşama 6: Optimizasyon ve Benchmark
-- [ ] Bellek ve gecikme ölçüm notları (`docs/benchmark.md`)
-- [ ] Başlangıç süresi ve release derlemesi
-- [ ] README ve son rötuşlar
+- [x] Bellek ve gecikme ölçüm notları (`docs/benchmark.md`)
+- [x] Başlangıç süresi ve release derlemesi (release profili tanımlı)
+- [x] README ve son rötuşlar

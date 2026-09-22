@@ -205,7 +205,7 @@ impl eframe::App for FastFindApp {
                         ui.horizontal(|ui| {
                             ui.set_width(ui.available_width());
                             let yanit =
-                                ui.selectable_label(secili_konum == Some(konum), &oge.ad);
+                                ui.selectable_label(secili_konum == Some(konum), oge.ad.as_str());
                             if yanit.clicked() {
                                 secili_yeni = Some(konum);
                             }
