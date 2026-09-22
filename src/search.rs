@@ -63,23 +63,21 @@ pub fn arama_gorevlisi_baslat(
     istek: Receiver<String>,
     sonuc: Sender<Vec<usize>>,
 ) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || loop {
-        let ilk = match istek.recv() {
-            Ok(sorgu) => sorgu,
-            Err(_) => break,
-        };
-        let mut guncel = ilk;
-        while let Ok(yeni) = istek.try_recv() {
-            guncel = yeni;
-        }
-        let okunan = match indeks.read() {
-            Ok(kilit) => kilit,
-            Err(_) => break,
-        };
-        let cikti = ara(&okunan, &guncel);
-        drop(okunan);
-        if sonuc.send(cikti).is_err() {
-            break;
+    std::thread::spawn(move || {
+        while let Ok(ilk) = istek.recv() {
+            let mut guncel = ilk;
+            while let Ok(yeni) = istek.try_recv() {
+                guncel = yeni;
+            }
+            let okunan = match indeks.read() {
+                Ok(kilit) => kilit,
+                Err(_) => break,
+            };
+            let cikti = ara(&okunan, &guncel);
+            drop(okunan);
+            if sonuc.send(cikti).is_err() {
+                break;
+            }
         }
     })
 }
