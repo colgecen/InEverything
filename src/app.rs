@@ -74,9 +74,10 @@ impl FastFindApp {
         {
             let indeks_yaz = Arc::clone(&indeks);
             let durum_yaz = tarama.clone();
+            let kokler_tarama = kokler.clone();
             std::thread::spawn(move || {
                 let iptal = AtomicBool::new(false);
-                let bulunan = indexer::sistemi_tara(&kokler, &durum_yaz, &iptal);
+                let bulunan = indexer::sistemi_tara(&kokler_tarama, &durum_yaz, &iptal);
                 if let Ok(mut kilit) = indeks_yaz.write() {
                     *kilit = bulunan;
                 }
