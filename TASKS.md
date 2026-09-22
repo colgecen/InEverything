@@ -4,27 +4,27 @@
 > Yeşilse Türkçe conventional commit + `git push`. Kırmızıysa push yok.
 
 ## Aşama 0: Ortam ve İskelet
-- [ ] Windows kurulum betiğini ekle (`scripts/kurulum-windows.ps1`)
-- [ ] CI iş akışını ekle (fmt + clippy + test + build)
-- [ ] Rust proje iskeletini oluştur (`cargo init --bin fastfind`)
-- [ ] Bağımlılıkları `Cargo.toml` dosyasına ekle
+- [x] Windows kurulum betiğini ekle (`scripts/kurulum-windows.ps1`)
+- [x] CI iş akışını ekle (fmt + clippy + test + build)
+- [x] Rust proje iskeletini oluştur (`cargo init --bin fastfind`)
+- [x] Bağımlılıkları `Cargo.toml` dosyasına ekle
 
 ## Aşama 1: Proje Kurulumu ve Mimarisi
-- [ ] Temel veri yapılarını tanımla (`FileItem`, `SearchQuery`, `AppConfig`)
-- [ ] Yapılandırma yükleme/kaydetme (`config.rs`)
-- [ ] Modül iskeletini kur (`app`, `indexer`, `search`, `actions`)
+- [x] Temel veri yapılarını tanımla (`FileItem`, `SearchQuery`, `AppConfig`)
+- [x] Yapılandırma yükleme/kaydetme (`config.rs`)
+- [x] Modül iskeletini kur (`app`, `indexer`, `search`, `actions`)
 
 ## Aşama 2: İndeksleme Motoru (Core)
-- [ ] Sistem sürücülerini tespit et (C:\, D:\ vb.)
-- [ ] Paralel dosya tarama (`walkdir` + `rayon`)
-- [ ] Canlı dosya izleme (`notify` crate)
-- [ ] RAM içi indeks optimizasyonu (`Arc<RwLock<Vec>>` + atomik sayaçlar)
+- [x] Sistem sürücülerini tespit et (C:\, D:\ vb.)
+- [x] Paralel dosya tarama (`walkdir` + `rayon`)
+- [x] Canlı dosya izleme (`notify` crate)
+- [x] RAM içi indeks optimizasyonu (`Arc<RwLock<Vec>>` + atomik sayaçlar)
 - [ ] NTFS MFT araştırmasını belgele (uygulama ileri faza bırakıldı)
 
 ## Aşama 3: Arama Motoru
-- [ ] Tam eşleşme ve uzantı filtreleme (`*.ext`)
-- [ ] Bulanık arama (`fuzzy-matcher` skim)
-- [ ] Asenkron arama kanalı (`crossbeam-channel`, UI kilitlenmez)
+- [x] Tam eşleşme ve uzantı filtreleme (`*.ext`)
+- [x] Bulanık arama (`fuzzy-matcher` skim)
+- [x] Asenkron arama kanalı (`crossbeam-channel`, UI kilitlenmez)
 
 ## Aşama 4: Grafik Kullanıcı Arayüzü (GUI)
 - [ ] Ana pencere ve koyu tema (eframe/egui)
