@@ -91,7 +91,7 @@ mod testler {
     fn ornek_indeks() -> Vec<FileItem> {
         vec![
             FileItem::dosya(PathBuf::from("C:\\A\\rapor.pdf"), 100, None),
-            FileItem::dosya(PathBuf::from("C:\\A\\rapor-taslagi.docx"), 200, None),
+            FileItem::dosya(PathBuf::from("C:\\A\\rapor-taslak.docx"), 200, None),
             FileItem::dosya(PathBuf::from("C:\\A\\foto.png"), 300, None),
         ]
     }
