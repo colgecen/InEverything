@@ -11,3 +11,4 @@ pub mod depo;
 pub mod indexer;
 pub mod model;
 pub mod search;
+pub mod tema;

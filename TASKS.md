@@ -68,3 +68,22 @@ Linux'ta NTFS MFT eşdeğeri olmadığından tek yolumuz diske yazılmış indek
       XDG yolları, README/docs, CI, Windows betikleri, `colgecen`)
 - [x] Arayüz hataları: çift `ms` düzeltildi, "Yeniden Tara" düğmesi için
       genişlik ayrıldı (metin kutusu tüm satırı kaplıyordu)
+
+## Aşama 8: Futuristik arayüz (tema)
+
+- [x] `tema.rs`: renk paleti (camgöbeği/mor/pembe neon), font kurulumu
+      (Hack gömülü normal, kalın ağırlık sistemden okunur, bulunamazsa gömülür),
+      `Visuals`/`Spacing` (koyu widget katmanları, ince neon kaydırma çubuğu)
+- [x] Neon çizim yardımcıları: gradyan + ızgara arka plan, tarama çizgisi,
+      katmanlı parıltılı çerçeve, dört yönlü parıltılı metin, ışıklı nokta,
+      bilgi çipleri, ölçüye göre metin kısaltma
+- [x] Başlık satırı: elmas logo, harf aralıklı `I N E V E R Y T H I N G`,
+      kayıt/boyut/tarama çipleri, altında koşan neon ışın çizgisi
+- [x] Arama kutusu: odakta parıltı, büyüteç imlesi, neon "Yeniden Tara" çipi
+- [x] Sütun başlıkları (ADI/KONUM/BOYUT/DEĞİŞTİRİLME) ve neon satırlar:
+      uzantıya göre renkli işaret, hover/seçim vurgusu, sağa hizalı sayılar
+- [x] Boş ekran: büyük başlık + tıklanabilir örnek sorgu çipleri
+- [x] Alt çubuk: canlı durum noktası, kısayol ipuçları
+- [x] Kapılar yeşil: `fmt`, `clippy -D warnings`, 66 test, release derlemesi
+- [x] Görsel doğrulama: dolu liste, boş ekran ve odakta arama kutusu ekran
+      görüntüleriyle kontrol edildi

@@ -1,7 +1,9 @@
-//! Grafik arayüz: eframe/egui tabanlı ana pencere.
+//! Grafik arayüz: eframe/egui tabanlı ana pencere, futuristik tema ile.
 //!
 //! Açılışta diskteki indeks anında belleğe alınır (yüz binlerce kayıt için
 //! onlarca milisaniye), tarama yalnızca indeks bayatsa arka planda koşar.
+//! Renk, tipografi ve parıltı efektleri `tema` modülünden gelir; bu modül
+//! yalnızca düzeni ve etkileşimi kurar.
 
 use std::path::PathBuf;
 use std::sync::{
@@ -11,7 +13,7 @@ use std::sync::{
 use std::time::{Duration, SystemTime};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use eframe::egui;
+use eframe::egui::{self, Align2, Color32, Pos2, Rect, Rounding, Sense, Vec2};
 
 use crate::{
     actions,
@@ -19,7 +21,19 @@ use crate::{
     depo::Indeks,
     indexer::{self, CanliIzleyici, Degisiklik, TaramaDurumu},
     search::{self, AramaIstegi, CanliKatman, Sonuclar},
+    tema,
 };
+
+/// Sonuç satırının yüksekliği (satır aralığı hariç).
+const SATIR_Y: f32 = 30.0;
+/// Sol kenardaki renkli dosya işaretçisinin sol x konumu.
+const ISARET_X: f32 = 15.0;
+/// Dosya adının başladığı x konumu.
+const AD_X: f32 = 36.0;
+/// Sağa hizalı sütunların sağ kenar payı.
+const SAG_PAY: f32 = 16.0;
+/// Boyut sütununun zaman sütununa göre geride kaldığı miktar.
+const SUTUN_ARASI: f32 = 96.0;
 
 /// Satırda tetiklenen dosya eylemi.
 enum Eylem {
@@ -45,6 +59,26 @@ struct SatirVerisi {
     boyut: u64,
     zaman: Option<SystemTime>,
     klasor: bool,
+}
+
+/// Üst durum satırının gösterdiği tarama sayaçları.
+struct TaramaOzeti {
+    taranan: usize,
+    klasor: usize,
+    dizin: usize,
+}
+
+/// Sonuç listesindeki sütunların x konumları.
+///
+/// Pencere daraldıkça dosya adı sütununun payı azalır, böylece yol ve
+/// sağdaki sayısal sütunlar ezilmez.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Sutunlar {
+    ad: f32,
+    yol: f32,
+    yol_en: f32,
+    boyut: f32,
+    zaman: f32,
 }
 
 /// Ana uygulama durumu.
@@ -87,9 +121,9 @@ pub fn calistir() -> eframe::Result<()> {
 }
 
 impl InEverythingApp {
-    /// İlk kurulum: yapılandırma, indeks yükleme, kanallar, izleyici.
+    /// İlk kurulum: tema, yapılandırma, indeks yükleme, kanallar, izleyici.
     pub fn yeni(baglam: &eframe::CreationContext<'_>) -> Self {
-        baglam.egui_ctx.set_visuals(egui::Visuals::dark());
+        tema::uygula(&baglam.egui_ctx);
         let yapilandirma = AppConfig::yukle();
         let kokler = yapilandirma.etkin_kokler();
         let ayar_hash = yapilandirma.ayar_imzasi();
@@ -288,158 +322,821 @@ impl InEverythingApp {
                 .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
         }
     }
-}
 
-impl eframe::App for InEverythingApp {
-    fn update(&mut self, ctx: &egui::Context, _cerceve: &mut eframe::Frame) {
-        self.kanallari_yokla();
-        ctx.request_repaint_after(Duration::from_millis(250));
+    /// Başlık satırı: elmas logo, uygulama adı ve sağdaki bilgi çipleri.
+    fn baslik_satiri(&self, ui: &mut egui::Ui) {
+        let yukseklik = 54.0;
+        let (yanit, p) =
+            ui.allocate_painter(Vec2::new(ui.available_width(), yukseklik), Sense::hover());
+        let alan = yanit.rect;
+        let dikey = alan.center().y - 7.0;
 
-        let taraniyor = self.taraniyor.load(Ordering::Relaxed);
-        let taranan = self.tarama.sayi.load(Ordering::Relaxed);
-        let klasor_sayisi = self.tarama.klasor.load(Ordering::Relaxed);
-        let dizin_sayisi = self.tarama.dizin.load(Ordering::Relaxed);
-        let indeks_kayit = self.indeks_kayit_sayisi();
+        // elmas logo
+        let merkez = Pos2::new(alan.left() + 22.0, dikey);
+        let kose = vec![
+            Pos2::new(merkez.x, merkez.y - 16.0),
+            Pos2::new(merkez.x + 13.0, merkez.y),
+            Pos2::new(merkez.x, merkez.y + 16.0),
+            Pos2::new(merkez.x - 13.0, merkez.y),
+        ];
+        p.add(egui::Shape::closed_line(
+            kose,
+            tema::kontur(1.8, tema::NEON.gamma_multiply(0.9)),
+        ));
+        tema::nokta(&p, merkez, 3.2, tema::NEON);
 
-        egui::TopBottomPanel::top("arama_cubugu").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                // Metin kutusu tüm genişliği alırsa yanındaki düğme kırpılır;
-                // düğme için yer ayırılır.
-                let buton_yeri = 150.0;
-                let yanit = ui.add(
-                    egui::TextEdit::singleline(&mut self.sorgu_metni)
-                        .hint_text("Dosya ara: rapor.pdf, *.png, *.pdf rapor ...")
-                        .desired_width((ui.available_width() - buton_yeri).max(200.0)),
+        // uygulama adı ve alt başlık
+        let sol = alan.left() + 48.0;
+        tema::neon_yazi(
+            &p,
+            Pos2::new(sol, dikey - 3.0),
+            Align2::LEFT_CENTER,
+            tema::ISIM,
+            tema::kalin(19.0),
+            tema::NEON,
+            0.55,
+        );
+        p.text(
+            Pos2::new(sol + 1.0, dikey + 18.0),
+            Align2::LEFT_CENTER,
+            "ULTRA HIZLI DOSYA ARAMA MOTORU",
+            tema::mono(10.0),
+            tema::METIN_3,
+        );
+
+        // sağdaki çipler
+        let (kayit, boyut, tarama_ms) = self
+            .indeks
+            .read()
+            .map(|k| (k.kayit_sayisi(), k.boyut(), k.tarama_suresi_ms))
+            .unwrap_or((0, 0, 0));
+        let mut sag = alan.right();
+        let dikey_cip = alan.center().y;
+        tema::cip_sagdan(
+            ui,
+            &p,
+            &mut sag,
+            dikey_cip,
+            &format!("{kayit} KAYIT"),
+            tema::NEON,
+            22.0,
+        );
+        tema::cip_sagdan(
+            ui,
+            &p,
+            &mut sag,
+            dikey_cip,
+            &boyutu_bicimlendir(boyut as u64),
+            tema::MOR,
+            22.0,
+        );
+        tema::cip_sagdan(
+            ui,
+            &p,
+            &mut sag,
+            dikey_cip,
+            &format!("SON TARAMA {}", sureyi_bicimlendir_ms(tarama_ms as f64)),
+            tema::TURUNCU,
+            22.0,
+        );
+    }
+
+    /// Arama kutusu ve tarama düğmesi satırı.
+    fn arama_satiri(&mut self, ui: &mut egui::Ui, taraniyor: bool) {
+        let yukseklik = 46.0;
+        let buton_en = 178.0;
+        let genislik = ui.available_width();
+        let bas = ui.cursor().min;
+        let kutu_en = (genislik - buton_en - 16.0).max(160.0);
+        let kutu = Rect::from_min_size(bas, Vec2::new(kutu_en, yukseklik));
+        let buton = Rect::from_min_size(
+            Pos2::new(kutu.right() + 16.0, bas.y),
+            Vec2::new(buton_en, yukseklik),
+        );
+
+        // kutunun zemini ve büyüteç imlesi (metnin altında kalır)
+        ui.painter()
+            .rect_filled(kutu, Rounding::same(12.0), tema::YUZEY_2);
+        let merkez = Pos2::new(kutu.left() + 24.0, kutu.center().y);
+        ui.painter().circle_stroke(
+            merkez,
+            7.5,
+            tema::kontur(2.0, tema::NEON.gamma_multiply(0.8)),
+        );
+        ui.painter().line_segment(
+            [
+                Pos2::new(merkez.x + 5.4, merkez.y + 5.4),
+                Pos2::new(merkez.x + 11.0, merkez.y + 11.0),
+            ],
+            tema::kontur(2.4, tema::NEON.gamma_multiply(0.8)),
+        );
+
+        let yanit = ui.put(
+            kutu,
+            egui::TextEdit::singleline(&mut self.sorgu_metni)
+                .frame(false)
+                .font(tema::mono(15.0))
+                .text_color(tema::METIN)
+                .hint_text(
+                    egui::RichText::new("dosya ara — rapor.pdf, *.png, *belgeler* …")
+                        .font(tema::mono(13.5))
+                        .color(tema::METIN_3),
+                )
+                .vertical_align(egui::Align::Center)
+                .margin(egui::Margin {
+                    left: 46.0,
+                    right: 14.0,
+                    top: 0.0,
+                    bottom: 0.0,
+                })
+                .desired_width(kutu_en)
+                .min_size(Vec2::new(0.0, yukseklik)),
+        );
+
+        if self.ilk_cerceve {
+            yanit.request_focus();
+            self.ilk_cerceve = false;
+        }
+        if yanit.changed() {
+            if self.sorgu_metni.trim().is_empty() {
+                self.sonuclar = Sonuclar::default();
+                self.satirlari_kur();
+                self.secili = None;
+            } else {
+                self.aramayi_tetikle();
+            }
+        }
+
+        // çerçeve: odaktayken neon parıltısı, değilse sakin kenar
+        if yanit.has_focus() {
+            tema::neon_cerceve(ui.painter(), kutu, 12.0, tema::NEON, 1.0);
+        } else if yanit.hovered() {
+            ui.painter().rect_stroke(
+                kutu,
+                Rounding::same(12.0),
+                tema::kontur(1.3, tema::NEON.gamma_multiply(0.55)),
+            );
+        } else {
+            ui.painter()
+                .rect_stroke(kutu, Rounding::same(12.0), tema::kontur(1.0, tema::CETVEL));
+        }
+
+        // tarama düğmesi
+        let yanit = ui.interact(buton, ui.id().with("yeniden_tara"), Sense::click());
+        let yanit = if taraniyor {
+            yanit.on_hover_text("Tarama sürüyor")
+        } else {
+            yanit
+        };
+        let ugrunda = yanit.hovered() && !taraniyor;
+        let dolgu = if taraniyor {
+            tema::MOR.gamma_multiply(0.12)
+        } else if ugrunda {
+            tema::NEON.gamma_multiply(0.24)
+        } else {
+            tema::NEON.gamma_multiply(0.10)
+        };
+        let kenar = if taraniyor {
+            tema::MOR.gamma_multiply(0.45)
+        } else {
+            tema::NEON.gamma_multiply(0.75)
+        };
+        ui.painter().rect_filled(buton, Rounding::same(12.0), dolgu);
+        ui.painter()
+            .rect_stroke(buton, Rounding::same(12.0), tema::kontur(1.4, kenar));
+        if ugrunda {
+            tema::neon_cerceve(ui.painter(), buton, 12.0, tema::NEON, 0.75);
+        }
+        let etiket = if taraniyor {
+            "TARANIYOR …"
+        } else {
+            "⟳  YENİDEN TARA"
+        };
+        let renk = if taraniyor {
+            tema::MOR.gamma_multiply(0.85)
+        } else {
+            tema::NEON
+        };
+        tema::neon_yazi(
+            ui.painter(),
+            buton.center(),
+            Align2::CENTER_CENTER,
+            etiket,
+            tema::kalin(13.0),
+            renk,
+            if taraniyor { 0.3 } else { 0.5 },
+        );
+        if !taraniyor && yanit.clicked() {
+            self.tarama_tetikle(&self.yapilandirma.etkin_kokler());
+        }
+    }
+
+    /// Arama kutusunun altındaki durum satırı: canlı sayaç ve sağ çipler.
+    fn ust_durum_satiri(
+        &self,
+        ui: &mut egui::Ui,
+        zaman: f32,
+        taraniyor: bool,
+        ozet: &TaramaOzeti,
+        indeks_kayit: usize,
+    ) {
+        let yukseklik = 26.0;
+        let (yanit, p) =
+            ui.allocate_painter(Vec2::new(ui.available_width(), yukseklik), Sense::hover());
+        let alan = yanit.rect;
+        let renk = if taraniyor {
+            tema::TURUNCU
+        } else {
+            tema::YESIL
+        };
+        let nabiz = 0.70 + 0.30 * (zaman * 3.0).sin();
+        tema::nokta(
+            &p,
+            Pos2::new(alan.left() + 5.0, alan.center().y),
+            3.0 * nabiz,
+            renk,
+        );
+
+        let metin = if taraniyor {
+            format!(
+                "TARANIYOR · {} dosya · {} klasör · {} dizin",
+                ozet.taranan, ozet.klasor, ozet.dizin
+            )
+        } else {
+            format!(
+                "INDEKS HAZIR · {indeks_kayit} kayıt · sonuç {}",
+                self.sonuclar.toplam()
+            )
+        };
+        p.text(
+            Pos2::new(alan.left() + 18.0, alan.center().y),
+            Align2::LEFT_CENTER,
+            metin,
+            tema::mono(12.0),
+            tema::METIN_2,
+        );
+
+        let mut sag = alan.right();
+        let dikey = alan.center().y;
+        let (etiket, renk) = if self.yapilandirma.canli_izleme {
+            ("CANLI İZLEME", tema::YESIL)
+        } else {
+            ("CANLI KAPALI", tema::METIN_3)
+        };
+        tema::cip_sagdan(ui, &p, &mut sag, dikey, etiket, renk, 20.0);
+    }
+
+    /// Başlığın altında uzanan, tarama sırasında üzerinde ışık koşan çizgi.
+    fn isin_cizgisi(&self, ui: &mut egui::Ui, zaman: f32, taraniyor: bool) {
+        let (yanit, p) = ui.allocate_painter(Vec2::new(ui.available_width(), 5.0), Sense::hover());
+        let alan = yanit.rect;
+        let yukseklik = 1.5;
+        let adim = 7.0;
+        let mut x = alan.left();
+        while x < alan.right() {
+            let t = ((x - alan.left()) / alan.width().max(1.0)).clamp(0.0, 1.0);
+            let sag = (x + adim - 2.0).min(alan.right());
+            p.rect_filled(
+                Rect::from_min_max(
+                    Pos2::new(x, alan.bottom() - yukseklik),
+                    Pos2::new(sag, alan.bottom()),
+                ),
+                0.0,
+                tema::NEON.gamma_multiply(0.10 + 0.55 * (1.0 - t)),
+            );
+            x += adim;
+        }
+
+        if taraniyor {
+            let konum = alan.left() + (zaman * 0.6) % 1.0 * alan.width();
+            p.rect_filled(
+                Rect::from_min_max(
+                    Pos2::new((konum - 64.0).max(alan.left()), alan.bottom() - 2.5),
+                    Pos2::new(konum, alan.bottom()),
+                ),
+                0.0,
+                tema::NEON.gamma_multiply(0.85),
+            );
+            tema::nokta(
+                &p,
+                Pos2::new(konum, alan.bottom() - 1.5),
+                2.2,
+                Color32::WHITE,
+            );
+        }
+    }
+
+    /// Sonuç listesinin üstündeki sütun başlıkları.
+    fn sutun_basligi(&self, ui: &mut egui::Ui) {
+        let (yanit, p) = ui.allocate_painter(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+        let alan = yanit.rect;
+        let sutunlar = sutunlari_hesapla(alan);
+        let font = tema::mono(10.0);
+        p.line_segment(
+            [
+                Pos2::new(alan.left(), alan.bottom() - 0.5),
+                Pos2::new(alan.right(), alan.bottom() - 0.5),
+            ],
+            tema::kontur(1.0, tema::CETVEL.gamma_multiply(0.7)),
+        );
+        let basliklar = [
+            (
+                Pos2::new(sutunlar.ad, alan.center().y),
+                Align2::LEFT_CENTER,
+                "DOSYA ADI",
+            ),
+            (
+                Pos2::new(sutunlar.yol, alan.center().y),
+                Align2::LEFT_CENTER,
+                "KONUM",
+            ),
+            (
+                Pos2::new(sutunlar.boyut, alan.center().y),
+                Align2::RIGHT_CENTER,
+                "BOYUT",
+            ),
+            (
+                Pos2::new(sutunlar.zaman, alan.center().y),
+                Align2::RIGHT_CENTER,
+                "DEĞİŞTİRİLME",
+            ),
+        ];
+        for (konum, hiza, metin) in basliklar {
+            p.text(konum, hiza, metin, font.clone(), tema::METIN_3);
+        }
+    }
+
+    /// Sorgu boşken görünen karşılama ekranı: büyük başlık ve örnek çipler.
+    fn bos_durum(&mut self, ui: &mut egui::Ui) {
+        let alan = ui.max_rect();
+        let merkez = alan.center();
+        let p = ui.painter();
+
+        let baslik_y = merkez.y - 70.0;
+        tema::neon_yazi(
+            p,
+            Pos2::new(merkez.x, baslik_y),
+            Align2::CENTER_CENTER,
+            tema::ISIM,
+            tema::kalin(30.0),
+            tema::NEON,
+            0.5,
+        );
+        p.text(
+            Pos2::new(merkez.x, baslik_y + 34.0),
+            Align2::CENTER_CENTER,
+            "ULTRA HIZLI DOSYA ARAMA MOTORU",
+            tema::mono(11.5),
+            tema::METIN_3,
+        );
+        p.text(
+            Pos2::new(merkez.x, merkez.y + 6.0),
+            Align2::CENTER_CENTER,
+            "aramaya başlamak için yukarıya yazın",
+            tema::mono(14.0),
+            tema::METIN_2,
+        );
+
+        // örnek sorgu çipleri
+        let ipuclari = ["*.pdf", "*.png", "rapor", "belgeler", "cmakelists.txt"];
+        let font = tema::mono(13.0);
+        let olcu = |aday: &str| -> f32 {
+            ui.fonts(|f| f.layout_no_wrap(aday.to_owned(), font.clone(), tema::NEON))
+                .size()
+                .x
+        };
+        let enler: Vec<f32> = ipuclari.iter().map(|i| olcu(i) + 26.0).collect();
+        let bosluk = 10.0;
+        let toplam: f32 = enler.iter().sum::<f32>() + bosluk * (enler.len() as f32 - 1.0);
+        let mut x = merkez.x - toplam * 0.5;
+        let y = merkez.y + 44.0;
+        for (sira, ipucu) in ipuclari.iter().enumerate() {
+            let en = enler[sira];
+            let dikdortgen = Rect::from_min_size(Pos2::new(x, y), Vec2::new(en, 32.0));
+            x += en + bosluk;
+            let yanit = ui.interact(dikdortgen, ui.id().with(("ipucu", sira)), Sense::click());
+            let vurgu = yanit.hovered() || yanit.is_pointer_button_down_on();
+            p.rect_filled(
+                dikdortgen,
+                Rounding::same(16.0),
+                tema::NEON.gamma_multiply(if vurgu { 0.18 } else { 0.06 }),
+            );
+            p.rect_stroke(
+                dikdortgen,
+                Rounding::same(16.0),
+                tema::kontur(
+                    1.0,
+                    tema::NEON.gamma_multiply(if vurgu { 0.9 } else { 0.35 }),
+                ),
+            );
+            p.text(
+                dikdortgen.center(),
+                Align2::CENTER_CENTER,
+                *ipucu,
+                font.clone(),
+                tema::NEON.gamma_multiply(if vurgu { 1.0 } else { 0.72 }),
+            );
+            if yanit.clicked() {
+                self.sorgu_metni = (*ipucu).to_string();
+                self.aramayi_tetikle();
+            }
+        }
+
+        p.text(
+            Pos2::new(merkez.x, y + 78.0),
+            Align2::CENTER_CENTER,
+            "sonuç satırına çift tıklayın · sağ tık ile menü",
+            tema::mono(11.0),
+            tema::METIN_3,
+        );
+    }
+
+    /// Sorgu doluyken eşleşme olmadığında görünen ekran.
+    fn sonuc_yok(&self, ui: &mut egui::Ui) {
+        let alan = ui.max_rect();
+        let merkez = alan.center();
+        let p = ui.painter();
+        tema::neon_yazi(
+            p,
+            Pos2::new(merkez.x, merkez.y - 14.0),
+            Align2::CENTER_CENTER,
+            "SONUÇ YOK",
+            tema::kalin(22.0),
+            tema::PEMBE,
+            0.5,
+        );
+        let sorgu = tema::kes(
+            ui,
+            self.sorgu_metni.trim(),
+            tema::mono(13.0),
+            tema::METIN_2,
+            (alan.width() - 80.0).max(120.0),
+        );
+        p.text(
+            Pos2::new(merkez.x, merkez.y + 20.0),
+            Align2::CENTER_CENTER,
+            format!("«{sorgu}» için eşleşme bulunamadı"),
+            tema::mono(13.0),
+            tema::METIN_2,
+        );
+    }
+
+    /// Alt durum çubuğu: canlı mesaj (sol) ve kısayol ipuçları (sağ).
+    fn alt_cubuk(&self, ui: &mut egui::Ui, taraniyor: bool) {
+        let genislik = ui.available_width();
+        ui.horizontal(|ui| {
+            let renk = if taraniyor {
+                tema::TURUNCU
+            } else {
+                tema::YESIL
+            };
+            let (yanit, p) = ui.allocate_painter(Vec2::new(14.0, 16.0), Sense::hover());
+            tema::nokta(&p, yanit.rect.center(), 3.0, renk);
+
+            let mesaj = tema::kes(
+                ui,
+                &self.durum_mesaji,
+                tema::mono(12.5),
+                tema::METIN_2,
+                (genislik - 330.0).max(90.0),
+            );
+            ui.label(
+                egui::RichText::new(mesaj)
+                    .font(tema::mono(12.5))
+                    .color(tema::METIN_2),
+            );
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new("sağ tık menü · ⏎ aç · çift tık konum")
+                        .font(tema::mono(11.0))
+                        .color(tema::METIN_3),
                 );
-                if self.ilk_cerceve {
-                    yanit.request_focus();
-                    self.ilk_cerceve = false;
-                }
-                if yanit.changed() {
-                    if self.sorgu_metni.trim().is_empty() {
-                        self.sonuclar = Sonuclar::default();
-                        self.satirlari_kur();
-                        self.secili = None;
-                    } else {
-                        self.aramayi_tetikle();
-                    }
-                }
-                let dugme = ui
-                    .add_enabled(
-                        !taraniyor,
-                        egui::Button::new(if taraniyor {
-                            "Taranıyor..."
-                        } else {
-                            "Yeniden Tara"
-                        }),
-                    )
-                    .on_disabled_hover_text("Tarama sürüyor");
-                if dugme.clicked() {
-                    self.tarama_tetikle(&self.yapilandirma.etkin_kokler());
-                }
-            });
-            ui.horizontal(|ui| {
-                if taraniyor {
-                    ui.label(format!(
-                        "Taranıyor... {taranan} dosya, {klasor_sayisi} klasör, {dizin_sayisi} dizin"
-                    ));
-                } else {
-                    let (tarama_ms, indeks_boyut) = self
-                        .indeks
-                        .read()
-                        .map(|k| (k.tarama_suresi_ms, k.boyut()))
-                        .unwrap_or((0, 0));
-                    ui.label(format!(
-                        "{indeks_kayit} kayıt · son tarama {} · {}",
-                        sureyi_bicimlendir_ms(tarama_ms as f64),
-                        boyutu_bicimlendir(indeks_boyut as u64)
-                    ));
-                }
-                ui.separator();
-                ui.label(format!("• {0} sonuç", self.sonuclar.toplam()));
+                ui.label(
+                    egui::RichText::new(format!("{} sonuç", self.sonuclar.toplam()))
+                        .font(tema::mono(11.5))
+                        .color(tema::NEON),
+                );
             });
         });
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let secili_konum = self.secili;
-            let mut secili_yeni = secili_konum;
-            let mut eylem: Option<Eylem> = None;
-            let satirlar = std::mem::take(&mut self.satirlar);
+    /// Merkez panel: arka plan, başlıklar ve sonuç satırları.
+    fn icerik(&mut self, ui: &mut egui::Ui, zaman: f32, taraniyor: bool) {
+        let alan = ui.max_rect();
+        tema::arka_plan(ui.painter(), alan, zaman, taraniyor);
 
-            if self.sorgu_metni.trim().is_empty() {
-                ui.centered_and_justified(|ui| {
-                    ui.label("Aramaya başlamak için yukarıya dosya adı yazın");
-                });
+        let secili_konum = self.secili;
+        let mut secili_yeni = secili_konum;
+        let mut eylem: Option<Eylem> = None;
+        let satirlar = std::mem::take(&mut self.satirlar);
+        let bos_sorgu = self.sorgu_metni.trim().is_empty();
+
+        if bos_sorgu {
+            self.bos_durum(ui);
+        } else {
+            self.sutun_basligi(ui);
+            if satirlar.is_empty() {
+                self.sonuc_yok(ui);
             } else {
+                let sutunlar = sutunlari_hesapla(ui.max_rect());
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
-                    .show_rows(ui, 26.0, satirlar.len(), |ui, aralik| {
+                    .show_rows(ui, SATIR_Y, satirlar.len(), |ui, aralik| {
                         let okunan = self.indeks.read();
                         let kilit = match okunan.as_deref() {
                             Ok(kilit) => kilit,
                             Err(_) => return,
                         };
-                        for satir in aralik {
-                            let Some(satir) = satirlar.get(satir).copied() else {
+                        for i in aralik {
+                            let Some(satir) = satirlar.get(i).copied() else {
                                 continue;
                             };
                             let Some(veri) = satir_verisi(&self.sonuclar, &satir, kilit) else {
                                 continue;
                             };
-                            ui.horizontal(|ui| {
-                                ui.set_width(ui.available_width());
-                                let yanit = ui.selectable_label(
-                                    secili_konum == Some(satir_konumu(&satir)),
-                                    veri.ad.as_str(),
-                                );
-                                if yanit.clicked() {
-                                    secili_yeni = Some(satir_konumu(&satir));
-                                }
-                                if yanit.double_clicked() {
+                            let konum = satir_konumu(&satir);
+                            let (yanit, p) = ui.allocate_painter(
+                                Vec2::new(ui.available_width(), SATIR_Y),
+                                Sense::click(),
+                            );
+                            satiri_ciz(
+                                ui,
+                                &p,
+                                yanit.rect,
+                                &yanit,
+                                &veri,
+                                secili_konum == Some(konum),
+                                &sutunlar,
+                            );
+                            if yanit.clicked() {
+                                secili_yeni = Some(konum);
+                            }
+                            if yanit.double_clicked() {
+                                eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
+                            }
+                            yanit.context_menu(|ui| {
+                                if ui.button("Aç").clicked() {
                                     eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
+                                    ui.close_menu();
                                 }
-                                yanit.context_menu(|ui| {
-                                    if ui.button("Aç").clicked() {
-                                        eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
-                                        ui.close_menu();
-                                    }
-                                    if ui.button("Dosya konumunu aç").clicked() {
-                                        eylem = Some(Eylem::KonumuAc(PathBuf::from(&veri.yol)));
-                                        ui.close_menu();
-                                    }
-                                    if ui.button("Yolu kopyala").clicked() {
-                                        eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
-                                        ui.close_menu();
-                                    }
-                                });
-                                ui.label(kisalt(&veri.yol, 70));
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        ui.label(zamani_bicimlendir(veri.zaman));
-                                        ui.label(if veri.klasor {
-                                            String::from("klasör")
-                                        } else {
-                                            boyutu_bicimlendir(veri.boyut)
-                                        });
-                                    },
-                                );
+                                if ui.button("Dosya konumunu aç").clicked() {
+                                    eylem = Some(Eylem::KonumuAc(PathBuf::from(&veri.yol)));
+                                    ui.close_menu();
+                                }
+                                if ui.button("Yolu kopyala").clicked() {
+                                    eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
+                                    ui.close_menu();
+                                }
                             });
                         }
                     });
             }
+        }
 
-            self.satirlar = satirlar;
-            self.secili = secili_yeni;
-            if let Some(secilen) = eylem {
-                self.durum_mesaji = Self::eylemi_uygula(secilen);
-            }
-        });
-
-        egui::TopBottomPanel::bottom("durum_cubugu").show(ctx, |ui| {
-            ui.label(&self.durum_mesaji);
-        });
+        self.satirlar = satirlar;
+        self.secili = secili_yeni;
+        if let Some(secilen) = eylem {
+            self.durum_mesaji = Self::eylemi_uygula(secilen);
+        }
     }
+}
+
+impl eframe::App for InEverythingApp {
+    fn update(&mut self, ctx: &egui::Context, _cerceve: &mut eframe::Frame) {
+        self.kanallari_yokla();
+
+        let zaman = ctx.input(|girdi| girdi.time) as f32;
+        let taraniyor = self.taraniyor.load(Ordering::Relaxed);
+        ctx.request_repaint_after(Duration::from_millis(if taraniyor { 33 } else { 250 }));
+
+        let taranan = self.tarama.sayi.load(Ordering::Relaxed);
+        let ozet = TaramaOzeti {
+            taranan,
+            klasor: self.tarama.klasor.load(Ordering::Relaxed),
+            dizin: self.tarama.dizin.load(Ordering::Relaxed),
+        };
+        let indeks_kayit = self.indeks_kayit_sayisi();
+
+        egui::TopBottomPanel::top("ust_panel")
+            .frame(
+                egui::Frame::none()
+                    .fill(tema::YUZEY)
+                    .stroke(tema::kontur(1.0, tema::CETVEL))
+                    .inner_margin(egui::Margin {
+                        left: 22.0,
+                        right: 22.0,
+                        top: 14.0,
+                        bottom: 11.0,
+                    }),
+            )
+            .show(ctx, |ui| {
+                self.baslik_satiri(ui);
+                ui.add_space(4.0);
+                self.arama_satiri(ui, taraniyor);
+                ui.add_space(6.0);
+                self.ust_durum_satiri(ui, zaman, taraniyor, &ozet, indeks_kayit);
+                self.isin_cizgisi(ui, zaman, taraniyor);
+            });
+
+        egui::TopBottomPanel::bottom("durum_cubugu")
+            .frame(
+                egui::Frame::none()
+                    .fill(tema::YUZEY)
+                    .stroke(tema::kontur(1.0, tema::CETVEL))
+                    .inner_margin(egui::Margin {
+                        left: 22.0,
+                        right: 22.0,
+                        top: 8.0,
+                        bottom: 8.0,
+                    }),
+            )
+            .show(ctx, |ui| {
+                self.alt_cubuk(ui, taraniyor);
+            });
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().fill(tema::YUZEY))
+            .show(ctx, |ui| {
+                self.icerik(ui, zaman, taraniyor);
+            });
+    }
+}
+
+/// Verilen dikdörtgende sütunların x konumlarını hesaplar.
+fn sutunlari_hesapla(alan: Rect) -> Sutunlar {
+    let sag = alan.right() - SAG_PAY;
+    let zaman = sag;
+    let boyut = (sag - SUTUN_ARASI).max(alan.left() + 120.0);
+    let ad_payi = (alan.width() * 0.34).clamp(180.0, 340.0);
+    let yol = alan.left() + ad_payi;
+    let yol_en = (boyut - 24.0 - yol).max(40.0);
+    Sutunlar {
+        ad: alan.left() + AD_X,
+        yol,
+        yol_en,
+        boyut,
+        zaman,
+    }
+}
+
+/// Dosya adının uzantısına göre işareti ve vurgu rengini seçer.
+fn dosya_rengi(ad: &str, klasor: bool) -> Color32 {
+    if klasor {
+        return tema::MOR;
+    }
+    let uzanti = ad
+        .rsplit_once('.')
+        .map(|(_, k)| k.to_ascii_lowercase())
+        .unwrap_or_default();
+    match uzanti.as_str() {
+        "pdf" => tema::PEMBE,
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tif" | "tiff" | "heic" => {
+            tema::MOR
+        }
+        "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "go" | "java" | "sh"
+        | "cmake" => tema::YESIL,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "mkv" | "mp4" | "avi" | "mov" | "webm" => {
+            tema::TURUNCU
+        }
+        "zip" | "tar" | "gz" | "xz" | "7z" | "rar" => tema::TURUNCU,
+        "doc" | "docx" | "odt" | "txt" | "md" | "rtf" => tema::NEON,
+        "xls" | "xlsx" | "ods" | "csv" => tema::YESIL,
+        "json" | "yaml" | "yml" | "toml" | "xml" | "ini" | "conf" => tema::METIN_2,
+        _ => tema::METIN_3,
+    }
+}
+
+/// Bir sonucun satırını neon temayla çizer.
+fn satiri_ciz(
+    ui: &egui::Ui,
+    p: &egui::Painter,
+    alan: Rect,
+    yanit: &egui::Response,
+    veri: &SatirVerisi,
+    secili_mi: bool,
+    sutunlar: &Sutunlar,
+) {
+    // zemin
+    let dolgu = if secili_mi {
+        tema::NEON.gamma_multiply(0.15)
+    } else if yanit.is_pointer_button_down_on() {
+        tema::NEON.gamma_multiply(0.11)
+    } else if yanit.hovered() {
+        tema::NEON.gamma_multiply(0.06)
+    } else {
+        Color32::TRANSPARENT
+    };
+    if dolgu != Color32::TRANSPARENT {
+        p.rect_filled(alan, 0.0, dolgu);
+    }
+
+    // sol vurgu çubuğu ve sağa doğru sönümlenen parıltı
+    if secili_mi {
+        p.rect_filled(
+            Rect::from_min_max(
+                Pos2::new(alan.left(), alan.top()),
+                Pos2::new(alan.left() + 3.0, alan.bottom()),
+            ),
+            0.0,
+            tema::NEON,
+        );
+        for i in 0..10 {
+            p.rect_filled(
+                Rect::from_min_max(
+                    Pos2::new(alan.left() + 3.0 + i as f32 * 3.0, alan.top()),
+                    Pos2::new(alan.left() + 6.0 + i as f32 * 3.0, alan.bottom()),
+                ),
+                0.0,
+                tema::NEON.gamma_multiply(0.10 * (1.0 - i as f32 / 10.0)),
+            );
+        }
+    } else if yanit.hovered() {
+        p.rect_filled(
+            Rect::from_min_max(
+                Pos2::new(alan.left(), alan.top()),
+                Pos2::new(alan.left() + 3.0, alan.bottom()),
+            ),
+            0.0,
+            tema::MOR.gamma_multiply(0.8),
+        );
+    }
+
+    // uzantı işareti
+    let renk = dosya_rengi(&veri.ad, veri.klasor);
+    let isaret = Rect::from_center_size(
+        Pos2::new(alan.left() + ISARET_X + 5.0, alan.center().y),
+        Vec2::new(10.0, 10.0),
+    );
+    p.rect_filled(
+        isaret.expand(3.0),
+        Rounding::same(4.0),
+        renk.gamma_multiply(0.18),
+    );
+    p.rect_filled(isaret, Rounding::same(3.0), renk);
+
+    // dosya adı
+    let ad_en = (sutunlar.yol - 14.0 - (alan.left() + AD_X)).max(40.0);
+    let ad = tema::kes(ui, &veri.ad, tema::kalin(14.0), tema::METIN, ad_en);
+    p.text(
+        Pos2::new(alan.left() + AD_X, alan.center().y),
+        Align2::LEFT_CENTER,
+        ad,
+        tema::kalin(14.0),
+        if secili_mi { tema::NEON } else { tema::METIN },
+    );
+
+    // yol
+    let yol = tema::kes(
+        ui,
+        &veri.yol,
+        tema::mono(11.5),
+        tema::METIN_3,
+        sutunlar.yol_en,
+    );
+    p.text(
+        Pos2::new(sutunlar.yol, alan.center().y),
+        Align2::LEFT_CENTER,
+        yol,
+        tema::mono(11.5),
+        tema::METIN_3,
+    );
+
+    // sağa hizalı boyut ve zaman
+    let boyut = if veri.klasor {
+        String::from("—")
+    } else {
+        boyutu_bicimlendir(veri.boyut)
+    };
+    let zaman = if veri.klasor {
+        String::from("klasör")
+    } else {
+        zamani_bicimlendir(veri.zaman)
+    };
+    p.text(
+        Pos2::new(sutunlar.boyut, alan.center().y),
+        Align2::RIGHT_CENTER,
+        boyut,
+        tema::mono(11.5),
+        tema::METIN_2,
+    );
+    p.text(
+        Pos2::new(sutunlar.zaman, alan.center().y),
+        Align2::RIGHT_CENTER,
+        zaman,
+        tema::mono(11.0),
+        tema::METIN_3,
+    );
+
+    // satır ayracı
+    p.line_segment(
+        [
+            Pos2::new(alan.left(), alan.bottom() - 0.5),
+            Pos2::new(alan.right(), alan.bottom() - 0.5),
+        ],
+        tema::kontur(1.0, tema::CETVEL.gamma_multiply(0.45)),
+    );
 }
 
 /// Satırın benzersiz konumu (seçili satırın korunması için).
@@ -637,5 +1334,28 @@ mod testler {
         assert_eq!(boyutu_bicimlendir(512), "512 B");
         assert_eq!(boyutu_bicimlendir(1536), "1.5 KB");
         assert_eq!(boyutu_bicimlendir(666_556_830), "635.7 MB");
+    }
+
+    #[test]
+    fn sutunlar_genisle_kaymaz() {
+        let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
+        assert_eq!(genis.ad, AD_X);
+        assert_eq!(genis.yol, 340.0);
+        assert!(genis.yol_en > 500.0);
+        assert_eq!(genis.zaman, 1100.0 - SAG_PAY);
+        assert_eq!(genis.boyut, genis.zaman - SUTUN_ARASI);
+
+        let dar = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, 400.0)));
+        assert!(dar.yol_en >= 40.0);
+        assert!(dar.boyut - dar.yol > 100.0, "yol sütunu sığmalı");
+    }
+
+    #[test]
+    fn uzanti_rengi_tanimli() {
+        assert_eq!(dosya_rengi("a.pdf", false), tema::PEMBE);
+        assert_eq!(dosya_rengi("a.PNG", false), tema::MOR);
+        assert_eq!(dosya_rengi("main.rs", false), tema::YESIL);
+        assert_eq!(dosya_rengi("klasor", true), tema::MOR);
+        assert_eq!(dosya_rengi("bilinmiyor", false), tema::METIN_3);
     }
 }
