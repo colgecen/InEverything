@@ -1,17 +1,19 @@
 [package]
-name = "fastfind"
+name = "InEverything"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Ultra hızlı dosya arama ve yönetim uygulaması (Everything benzeri)"
 license = "MIT"
 
+# İkili adı (dosya adı) `InEverything`; kütüphane adı rustc'nin
+# `non_snake_case` kuralı gereği küçük harf tutulur (`-D warnings` geçsin).
 [[bin]]
-name = "fastfind"
+name = "InEverything"
 path = "src/main.rs"
 
 [lib]
-name = "fastfind"
+name = "ineverything"
 path = "src/lib.rs"
 
 [dependencies]
@@ -20,19 +22,23 @@ egui = "0.29"
 rayon = "1"
 crossbeam-channel = "0.5"
 notify = "6"
-walkdir = "2"
 fuzzy-matcher = "0.3"
+memchr = "2"
 arboard = "3"
 open = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 thiserror = "1"
+memmap2 = "0.9"
 
 [dev-dependencies]
 tempfile = "3"
 
+# LTO kapalı: eframe/wgpu bağımlılıklarında tam bağlantı süresi tek başına
+# ~90 saniye ekliyor ve çalışma zamanında ölçülebilir kazanç vermiyor.
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+lto = false
+codegen-units = 16
+strip = true

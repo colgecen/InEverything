@@ -5,10 +5,18 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 /// `kaynak` dosyasının `hedef_klasor` içindeki karşılığını hesaplar.
+///
+/// Ayırıcı olarak `/` ve `\` birlikte kabul edilir; böylece Windows biçiminde
+/// verilmiş yollar Linux'ta da doğru çözülür.
 pub fn hedef_yolu_hesapla(kaynak: &Path, hedef_klasor: &Path) -> Result<PathBuf> {
-    let ad = kaynak
-        .file_name()
-        .with_context(|| format!("dosya adı yok: {}", kaynak.display()))?;
+    let metin = kaynak.to_string_lossy();
+    let ad = metin
+        .rfind(['/', '\\'])
+        .map(|i| &metin[i + 1..])
+        .unwrap_or(metin.as_ref());
+    if ad.is_empty() {
+        anyhow::bail!("dosya adı yok: {}", kaynak.display());
+    }
     Ok(hedef_klasor.join(ad))
 }
 
@@ -26,17 +34,31 @@ pub fn dosyayi_ac(yol: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Windows Gezgini'nde dosyanın konumunu seçili gösterir.
+/// Dosyanın bulunduğu klasörü dosya yöneticisinde açar.
+///
+/// Windows'ta dosya seçili gelir; diğer platformlarda klasör açılır.
 pub fn konumu_ac(yol: &Path) -> Result<()> {
-    let durum = std::process::Command::new("explorer")
-        .arg("/select,")
-        .arg(yol)
-        .status()
-        .context("explorer başlatılamadı")?;
-    if durum.success() {
+    #[cfg(target_os = "windows")]
+    {
+        let durum = std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(yol)
+            .status()
+            .context("explorer başlatılamadı")?;
+        if durum.success() {
+            Ok(())
+        } else {
+            anyhow::bail!("konum açılamadı: {}", yol.display());
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let ust = yol
+            .parent()
+            .filter(|ust| !ust.as_os_str().is_empty())
+            .with_context(|| format!("üst klasör yok: {}", yol.display()))?;
+        open::that(ust).with_context(|| format!("klasör açılamadı: {}", ust.display()))?;
         Ok(())
-    } else {
-        anyhow::bail!("konum açılamadı: {}", yol.display());
     }
 }
 
@@ -59,12 +81,28 @@ pub fn dosyayi_tasi(kaynak: &Path, hedef_klasor: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod testler {
     use super::*;
+    use std::ffi::OsStr;
 
     #[test]
     fn hedef_yol_dosya_adini_birlestirir() {
         let hedef =
             hedef_yolu_hesapla(Path::new("C:\\A\\rapor.pdf"), Path::new("D:\\Yedek")).expect("yol");
-        assert_eq!(hedef, PathBuf::from("D:\\Yedek\\rapor.pdf"));
+        // Ayırıcı platforma göre değişir; önemli olan doğru dosya adının
+        // hedef klasörün altına eklenmesi.
+        assert_eq!(hedef, PathBuf::from("D:\\Yedek").join("rapor.pdf"));
+        assert_eq!(hedef.file_name(), Some(OsStr::new("rapor.pdf")));
+    }
+
+    #[test]
+    fn unix_yolu_da_cozulur() {
+        let hedef =
+            hedef_yolu_hesapla(Path::new("/home/x/not.txt"), Path::new("/yedek")).expect("yol");
+        assert_eq!(hedef, PathBuf::from("/yedek/not.txt"));
+    }
+
+    #[test]
+    fn dosya_adi_yoksa_hata_verir() {
+        assert!(hedef_yolu_hesapla(Path::new("/home/x/"), Path::new("/yedek")).is_err());
     }
 
     #[test]

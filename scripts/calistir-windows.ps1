@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    FastFind tek komutla calistirir; eksik bagimliliklari otomatik kurar.
+    InEverything tek komutla calistirir; eksik bagimliliklari otomatik kurar.
 .DESCRIPTION
     1. cargo yoksa: winget ile Rustup kurar, stable toolchain ekler.
     2. MSVC linker (cl.exe) yoksa: VS 2022 Build Tools kurmayi dener.
@@ -32,7 +32,7 @@ function YoluYenile {
 
 $projeKok = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projeKok
-Write-Host "== FastFind calistiriliyor ($projeKok) ==" -ForegroundColor Cyan
+Write-Host "== InEverything calistiriliyor ($projeKok) ==" -ForegroundColor Cyan
 
 # 1) Rust toolchain yoksa kur
 if (-not (KomutVar 'cargo')) {

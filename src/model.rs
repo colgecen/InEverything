@@ -45,7 +45,7 @@ impl FileItem {
             yol,
             boyut: 0,
             degistirilme: None,
-            klasor_mu: false,
+            klasor_mu: true,
         }
     }
 

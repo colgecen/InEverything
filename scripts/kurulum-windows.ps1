@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    FastFind geliştirme ortamı kurulum betiği (Windows).
+    InEverything geliştirme ortamı kurulum betiği (Windows).
 .DESCRIPTION
     Rust stable toolchain + MSVC linker önkoşulunu kurar ve projeyi derler.
     Kurumsal proxy arkasındaysanız .exe indirmeleri engellenebilir; o durumda
@@ -9,7 +9,7 @@
 #>
 $ErrorActionPreference = 'Stop'
 
-Write-Host '== FastFind kurulumu basliyor ==' -ForegroundColor Cyan
+Write-Host '== InEverything kurulumu basliyor ==' -ForegroundColor Cyan
 
 # 1) Rustup (yoksa kur)
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {

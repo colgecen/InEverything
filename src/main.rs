@@ -1,3 +1,3 @@
 fn main() -> eframe::Result<()> {
-    fastfind::app::calistir()
+    ineverything::app::calistir()
 }

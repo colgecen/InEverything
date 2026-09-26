@@ -1,4 +1,4 @@
-# FastFind Yapılacaklar Listesi
+# InEverything Yapılacaklar Listesi
 
 > Her görev bitiminde kapılar koşar: `cargo fmt` + `cargo clippy` + `cargo test` + `cargo build`.
 > Yeşilse Türkçe conventional commit + `git push`. Kırmızıysa push yok.
@@ -7,7 +7,7 @@
 - [x] Windows kurulum betiğini ekle (`scripts/kurulum-windows.ps1`)
 - [x] Çalıştırınca bağımlılıkları otomatik kuran betiği ekle (`scripts/calistir-windows.ps1`)
 - [x] CI iş akışını ekle (fmt + clippy + test + build)
-- [x] Rust proje iskeletini oluştur (`cargo init --bin fastfind`)
+- [x] Rust proje iskeletini oluştur (`cargo init --bin ineverything`)
 - [x] Bağımlılıkları `Cargo.toml` dosyasına ekle
 
 ## Aşama 1: Proje Kurulumu ve Mimarisi
@@ -43,3 +43,28 @@
 - [x] Bellek ve gecikme ölçüm notları (`docs/benchmark.md`)
 - [x] Başlangıç süresi ve release derlemesi (release profili tanımlı)
 - [x] README ve son rötuşlar
+- [x] `lto`/`codegen-units` son birim tıkanmasını kaldır (1m27s → 0.7s)
+
+## Aşama 7: Kalıcı İndeks (Everything benzeri anlık açılış)
+
+Linux'ta NTFS MFT eşdeğeri olmadığından tek yolumuz diske yazılmış indeks.
+
+- [x] `depo.rs`: 40 B sabit uzunluklu kayıt + metin bloğu, atomik yazma
+      (`.tmp` + `rename`), sürüm/başlık doğrulaması
+- [x] `memmap2` ile açılışta `mmap` (886 ms → **81 µs**)
+- [x] `indexer.rs`: iş kuyruklu paralel tarama, hem dosya hem klasör kaydı,
+      kök/hariç varsayılanları, tarama durumu sayaçları
+- [x] `search.rs`: tahsissiz paralel arama, 0-3 puanlama,
+      `select_nth_unstable` ile en iyi N (38-68 ms / 2.5M kayıt)
+- [x] Canlı katman: silinen/eklenen, 20 bin eşikte tam yeniden tarama
+- [x] `config.rs`: XDG yolları, kök/hariç/indeks yolu, bayatlık imzası
+- [x] `app.rs`: açılışta indeks yükleme, arka planda bayat tarama,
+      `nesil` ile sonuç yenileme, "Yeniden Tara", durum çubuğu
+- [x] `colgecen` betiği: log (`target/paketleme.log`), hata yayılımı,
+      AppImage başarısızsa ham binary'ye düşme, "sadece çalıştır" seçeneği
+- [x] Ölçümler (`examples/bench.rs`), README + `docs/benchmark.md`
+- [x] Uygulamayı çalıştırıp görsel doğrulama + AppImage üretimi
+- [x] Uygulama adı `fastfind` → **InEverything** (paket, ikili, pencere başlığı,
+      XDG yolları, README/docs, CI, Windows betikleri, `colgecen`)
+- [x] Arayüz hataları: çift `ms` düzeltildi, "Yeniden Tara" düğmesi için
+      genişlik ayrıldı (metin kutusu tüm satırı kaplıyordu)

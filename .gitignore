@@ -1,6 +1,6 @@
 # Rust / Cargo
+# Cargo.lock izlenir: `--locked` kapıları ve CI aynı kilit dosyasını kullanır.
 /target/
-Cargo.lock
 **/*.rs.bk
 *.pdb
 
@@ -21,4 +21,4 @@ Desktop.ini
 .DS_Store
 
 # Yerel yapılandırma (örnek dışı)
-fastfind-config.json
+InEverything-config.json
