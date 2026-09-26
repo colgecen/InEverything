@@ -87,3 +87,18 @@ Linux'ta NTFS MFT eşdeğeri olmadığından tek yolumuz diske yazılmış indek
 - [x] Kapılar yeşil: `fmt`, `clippy -D warnings`, 66 test, release derlemesi
 - [x] Görsel doğrulama: dolu liste, boş ekran ve odakta arama kutusu ekran
       görüntüleriyle kontrol edildi
+
+## Aşama 9: Uygulama logosu (kapak)
+
+- [x] `assets/InEverything.jpg` kaynak logo olarak depoya alındı; `image`
+      (yalnızca `jpeg` özelliği) bağımlılığı eklendi
+- [x] `tema.rs`: gömülü JPEG açılışta bir kez çözülür (256×256 RGBA,
+      `OnceLock`) → `uygulama_logosu()` pencere ikonunu besler
+- [x] `app.rs::calistir()`: `ViewportBuilder::with_icon` ile logo pencere
+      ikonu olarak veriliyor (Wayland'de winit ikonu yok saydığı için
+      masaüstü girişi ikonu asıl kanaldır)
+- [x] `colgecen`: `icon.png` artık `assets/InEverything.jpg`'den 256×256
+      üretilir; masaüstü girişi, hicolor ikonu ve AppImage simgesi tek
+      kaynaktan gelir (kaynak yoksa eski yedek korunur)
+- [x] `gomulu_logo_cozulur` testi: gömülü JPEG çözülemezse kapı düşer
+- [x] Kapılar yeşil: `fmt`, `clippy -D warnings`, 67 test, release derlemesi

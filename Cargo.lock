@@ -12,6 +12,7 @@ dependencies = [
  "eframe",
  "egui",
  "fuzzy-matcher",
+ "image",
  "memchr",
  "memmap2",
  "notify",
@@ -1656,6 +1657,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

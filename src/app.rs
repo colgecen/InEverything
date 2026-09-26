@@ -109,8 +109,12 @@ pub struct InEverythingApp {
 
 /// Uygulamayı başlatır, pencere kapanana kadar dönmez.
 pub fn calistir() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1100.0, 700.0]);
+    if let Some(ikon) = tema::uygulama_logosu() {
+        viewport = viewport.with_icon(ikon.clone());
+    }
     let secenekler = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 700.0]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

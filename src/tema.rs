@@ -3,6 +3,8 @@
 //! Düzeni `app` modülü kurar; renk, tipografi ve parıltı efektleri buradan
 //! gelir. Her çizim işlevi safdır, egui'nin `Painter` tipiyle çalışır.
 
+use std::sync::{Arc, OnceLock};
+
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Pos2, Rect, Rounding, Stroke, Vec2};
 
 /// Arka planın üstteki (hafif daha açık) tonu.
@@ -56,6 +58,37 @@ pub fn kalin(boyut: f32) -> FontId {
 pub fn uygula(ctx: &egui::Context) {
     ctx.set_fonts(font_tanimlari());
     ctx.set_style(stil());
+}
+
+/// Gömülü uygulama logosu (`assets/InEverything.jpg`).
+///
+/// İkiliye gömülür; kurulu ikili ve AppImage hangi dizinde olursa olsun
+/// aynı logo açılışta bulunur. Dosyayı değiştirmek için kaynak görüntüyü
+/// güncelleyip yeniden derlemek yeterlidir.
+const LOGO_GORUNTU: &[u8] = include_bytes!("../assets/InEverything.jpg");
+
+/// Logonun kenar uzunluğu; pencere ikonu için 4'ün katı olmalı.
+const LOGO_OLCU: u32 = 256;
+
+/// Logonun çözülmüş hâli (256×256 RGBA); ilk çağrıda bir kez çözülür.
+static LOGO: OnceLock<Option<Arc<egui::IconData>>> = OnceLock::new();
+
+/// Uygulama logosunun pencere/masaüstü ikonu olarak kullanılacak hâli.
+///
+/// Görüntü çözülemezse (`None`) uygulama varsayılan ikonla açılır.
+pub fn uygulama_logosu() -> Option<&'static Arc<egui::IconData>> {
+    LOGO.get_or_init(|| {
+        let gorsel = image::load_from_memory(LOGO_GORUNTU).ok()?;
+        let piksel = gorsel
+            .resize_exact(LOGO_OLCU, LOGO_OLCU, image::imageops::FilterType::Lanczos3)
+            .to_rgba8();
+        Some(Arc::new(egui::IconData {
+            rgba: piksel.into_raw(),
+            width: LOGO_OLCU,
+            height: LOGO_OLCU,
+        }))
+    })
+    .as_ref()
 }
 
 /// Font tanımlarını kurar.
@@ -431,6 +464,16 @@ mod testler {
         assert_eq!(karisim(ARKA_1, ARKA_2, 1.0), ARKA_2);
         let orta = karisim(Color32::BLACK, Color32::WHITE, 0.5);
         assert_eq!(orta, Color32::from_rgb(128, 128, 128));
+    }
+
+    /// Gömülü logo çözülemezse pencere/kapak ikonu boş kalır; bunu kapı
+    /// testleri erken yakalar.
+    #[test]
+    fn gomulu_logo_cozulur() {
+        let logo = uygulama_logosu().expect("gömülü logo çözülemiyor");
+        assert_eq!(logo.width, LOGO_OLCU);
+        assert_eq!(logo.height, LOGO_OLCU);
+        assert_eq!(logo.rgba.len(), (LOGO_OLCU * LOGO_OLCU * 4) as usize);
     }
 
     #[test]
