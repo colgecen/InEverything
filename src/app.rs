@@ -1322,7 +1322,7 @@ fn satiri_ciz(
     let yol_tanim = DugmeTanimi {
         etiket: "YOLU KOPYALA",
         ipucu: "Dosya yolunu panoya kopyala",
-        renk: tema::MOR,
+        renk: tema::TURUNCU,
     };
     let dosya_tanim = DugmeTanimi {
         etiket: "DOSYAYI KOPYALA",
