@@ -28,6 +28,18 @@ pub fn panoya_yolu_kopyala(yol: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Dosyayı dosya yöneticisindeki Ctrl+C gibi panoya kopyalar.
+///
+/// Dosya yöneticileri `text/uri-list` ile kopyalanan dosyaları yapıştırır;
+/// böylece panoya alınan dosya başka bir klasöre yapıştırılabilir.
+pub fn dosyayi_panoya_kopyala(yol: &Path) -> Result<()> {
+    let mut pano = arboard::Clipboard::new().context("pano açılamadı")?;
+    pano.set()
+        .file_list(&[yol])
+        .context("dosya panoya yazılamadı")?;
+    Ok(())
+}
+
 /// Dosyayı varsayılan uygulamayla açar.
 pub fn dosyayi_ac(yol: &Path) -> Result<()> {
     open::that(yol).with_context(|| format!("açılamadı: {}", yol.display()))?;

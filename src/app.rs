@@ -342,38 +342,31 @@ impl InEverythingApp {
             .unwrap_or(0)
     }
 
+    /// Seçili satırın yolunu döndürür; seçim yoksa en üst satırın yolunu.
+    fn secili_veya_ilk_yolu(&self) -> Option<PathBuf> {
+        let satir = match self.secili {
+            Some(konum) => self
+                .satirlar
+                .iter()
+                .find(|s| satir_konumu(s) == konum)
+                .copied(),
+            None => self.satirlar.first().copied(),
+        }?;
+        let okunan = self.indeks.read();
+        let kilit = okunan.as_deref().ok()?;
+        let veri = satir_verisi(&self.sonuclar, &satir, kilit)?;
+        Some(PathBuf::from(veri.yol))
+    }
+
     /// Seçimi bir sonraki satıra taşır; seçim yoksa en üst satırı seçer.
     fn asagi_git(&mut self) {
-        if self.satirlar.is_empty() {
-            return;
-        }
-        let konumlar: Vec<usize> = self.satirlar.iter().map(satir_konumu).collect();
-        self.secili = Some(match self.secili {
-            None => konumlar[0],
-            Some(secili) => konumlar
-                .iter()
-                .position(|&k| k == secili)
-                .and_then(|i| konumlar.get(i + 1).copied())
-                .unwrap_or(secili),
-        });
+        self.secili = sonraki_konum(&self.satirlar, self.secili);
         self.secili_gorunur = true;
     }
 
     /// Seçimi bir önceki satıra taşır; seçim yoksa en alt satırı seçer.
     fn yukari_git(&mut self) {
-        if self.satirlar.is_empty() {
-            return;
-        }
-        let konumlar: Vec<usize> = self.satirlar.iter().map(satir_konumu).collect();
-        self.secili = Some(match self.secili {
-            None => konumlar[konumlar.len() - 1],
-            Some(secili) => konumlar
-                .iter()
-                .position(|&k| k == secili)
-                .and_then(|i| i.checked_sub(1))
-                .map(|i| konumlar[i])
-                .unwrap_or(secili),
-        });
+        self.secili = onceki_konum(&self.satirlar, self.secili);
         self.secili_gorunur = true;
     }
 
@@ -389,14 +382,9 @@ impl InEverythingApp {
             Eylem::YoluKopyala(yol) => actions::panoya_yolu_kopyala(&yol)
                 .map(|()| format!("Yol kopyalandı: {}", yol.display()))
                 .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
-            Eylem::DosyaKopyala(kaynak) => {
-                let Some(hedef_klasor) = actions::klasor_sec(kaynak.parent()) else {
-                    return String::from("Kopyalama iptal edildi");
-                };
-                actions::dosyayi_kopyala(&kaynak, &hedef_klasor)
-                    .map(|yeni| format!("Kopyalandı: {}", yeni.display()))
-                    .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}"))
-            }
+            Eylem::DosyaKopyala(kaynak) => actions::dosyayi_panoya_kopyala(&kaynak)
+                .map(|()| format!("Panoya kopyalandı: {}", kaynak.display()))
+                .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
             Eylem::YoluDegistir(yol) => match actions::yolu_degistir(&yol) {
                 Ok(actions::TasimaSonucu::Iptal) => String::from("Taşıma iptal edildi"),
                 Ok(actions::TasimaSonucu::AyniKlasor) => {
@@ -910,7 +898,9 @@ impl InEverythingApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    egui::RichText::new("çift tık aç · sağ tık menü · YOLU KOPYALA / DOSYAYI KOPYALA / YOLU DEĞİŞTİR")
+                    egui::RichText::new(
+                        "Ctrl+I ara · F5 tara · ↑↓ gez · Ctrl+Shift+C yol · Ctrl+C dosya · Enter taşı",
+                    )
                         .font(tema::mono(11.0))
                         .color(tema::METIN_3),
                 );
@@ -999,6 +989,10 @@ impl InEverythingApp {
                                     eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
+                                if ui.button("Dosyayı panoya kopyala").clicked() {
+                                    eylem = Some(Eylem::DosyaKopyala(PathBuf::from(&veri.yol)));
+                                    ui.close_menu();
+                                }
                                 if ui.button("Yolu değiştir…").clicked() {
                                     eylem = Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
@@ -1021,14 +1015,18 @@ impl eframe::App for InEverythingApp {
     fn update(&mut self, ctx: &egui::Context, _cerceve: &mut eframe::Frame) {
         self.kanallari_yokla();
 
-        let (odak_istek, yeniden_tara, asagi, yukari) = ctx.input(|g| {
-            (
-                g.key_pressed(egui::Key::I) && g.modifiers.ctrl,
-                g.key_pressed(egui::Key::F5),
-                g.key_pressed(egui::Key::ArrowDown),
-                g.key_pressed(egui::Key::ArrowUp),
-            )
-        });
+        let (odak_istek, yeniden_tara, asagi, yukari, ctrl_c, ctrl_shift_c, enter) =
+            ctx.input(|g| {
+                (
+                    g.key_pressed(egui::Key::I) && g.modifiers.ctrl,
+                    g.key_pressed(egui::Key::F5),
+                    g.key_pressed(egui::Key::ArrowDown),
+                    g.key_pressed(egui::Key::ArrowUp),
+                    g.key_pressed(egui::Key::C) && g.modifiers.ctrl,
+                    g.key_pressed(egui::Key::C) && g.modifiers.ctrl && g.modifiers.shift,
+                    g.key_pressed(egui::Key::Enter),
+                )
+            });
         if odak_istek {
             ctx.memory_mut(|m| m.request_focus(self.arama_kutu_id));
         }
@@ -1040,6 +1038,20 @@ impl eframe::App for InEverythingApp {
         }
         if yukari {
             self.yukari_git();
+        }
+        if ctrl_shift_c {
+            if let Some(yol) = self.secili_veya_ilk_yolu() {
+                self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluKopyala(yol));
+            }
+        } else if ctrl_c {
+            if let Some(yol) = self.secili_veya_ilk_yolu() {
+                self.durum_mesaji = Self::eylemi_uygula(Eylem::DosyaKopyala(yol));
+            }
+        }
+        if enter {
+            if let Some(yol) = self.secili_veya_ilk_yolu() {
+                self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluDegistir(yol));
+            }
         }
 
         let zaman = ctx.input(|girdi| girdi.time) as f32;
@@ -1393,7 +1405,7 @@ fn satiri_ciz(
     };
     let dosya_tanim = DugmeTanimi {
         etiket: "DOSYAYI KOPYALA",
-        ipucu: "Dosyayı dosya yöneticisiyle seçilen klasöre kopyala",
+        ipucu: "Dosyayı panoya kopyala (Ctrl+C gibi)",
         renk: tema::MOR,
     };
     let degistir_tanim = DugmeTanimi {
@@ -1447,6 +1459,39 @@ fn satir_konumu(satir: &Satir) -> usize {
         Satir::Indeks(konum) => *konum,
         Satir::Canli(konum) => usize::MAX - *konum,
     }
+}
+
+/// Seçimi bir sonraki satıra taşır; seçim yoksa en üst satırı seçer.
+fn sonraki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
+    if satirlar.is_empty() {
+        return None;
+    }
+    let konumlar: Vec<usize> = satirlar.iter().map(satir_konumu).collect();
+    Some(match secili {
+        None => konumlar[0],
+        Some(secili) => konumlar
+            .iter()
+            .position(|&k| k == secili)
+            .and_then(|i| konumlar.get(i + 1).copied())
+            .unwrap_or(secili),
+    })
+}
+
+/// Seçimi bir önceki satıra taşır; seçim yoksa en alt satırı seçer.
+fn onceki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
+    if satirlar.is_empty() {
+        return None;
+    }
+    let konumlar: Vec<usize> = satirlar.iter().map(satir_konumu).collect();
+    Some(match secili {
+        None => konumlar[konumlar.len() - 1],
+        Some(secili) => konumlar
+            .iter()
+            .position(|&k| k == secili)
+            .and_then(|i| i.checked_sub(1))
+            .map(|i| konumlar[i])
+            .unwrap_or(secili),
+    })
 }
 
 /// Satırın çizim için gereken alanlarını toplar.
@@ -1579,6 +1624,40 @@ mod testler {
             satir_konumu(&Satir::Indeks(5)),
             satir_konumu(&Satir::Canli(5))
         );
+    }
+
+    fn ornek_satirlar() -> Vec<Satir> {
+        vec![
+            Satir::Indeks(0),
+            Satir::Indeks(1),
+            Satir::Indeks(2),
+            Satir::Indeks(3),
+        ]
+    }
+
+    #[test]
+    fn asagi_ustten_baslar() {
+        let satirlar = ornek_satirlar();
+        assert_eq!(sonraki_konum(&satirlar, None), Some(0));
+        assert_eq!(sonraki_konum(&satirlar, Some(0)), Some(1));
+        assert_eq!(sonraki_konum(&satirlar, Some(1)), Some(2));
+        assert_eq!(sonraki_konum(&satirlar, Some(3)), Some(3));
+    }
+
+    #[test]
+    fn yukari_alttan_baslar() {
+        let satirlar = ornek_satirlar();
+        assert_eq!(onceki_konum(&satirlar, None), Some(3));
+        assert_eq!(onceki_konum(&satirlar, Some(3)), Some(2));
+        assert_eq!(onceki_konum(&satirlar, Some(2)), Some(1));
+        assert_eq!(onceki_konum(&satirlar, Some(0)), Some(0));
+    }
+
+    #[test]
+    fn bos_liste_gezinme_none() {
+        let satirlar: Vec<Satir> = Vec::new();
+        assert_eq!(sonraki_konum(&satirlar, None), None);
+        assert_eq!(onceki_konum(&satirlar, None), None);
     }
 
     #[test]
