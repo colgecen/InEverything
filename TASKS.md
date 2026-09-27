@@ -143,15 +143,18 @@ düğmeleri; yol seçilirken **dosya yöneticisi** açılıp klasör seçilecek.
 
 ### Sıradaki adımlar (yapılacak)
 
-- [ ] `cargo build --release --locked --all-targets` (4. kapı; `Cargo.lock`
+- [x] `cargo build --release --locked --all-targets` (4. kapı; `Cargo.lock`
       rfd yüzünden değişti, release derlemesi henüz koşulmadı)
-- [ ] Uygulamayı çalıştırıp **görsel doğrulama**: satır sağındaki iki düğme
+- [x] Uygulamayı çalıştırıp **görsel doğrulama**: satır sağındaki iki düğme
       hizası, hover parıltısı, dar pencerede (<800 px) zaman sütununun
       kapanması, `YOLU DEĞİŞTİR` → dosya yöneticisi penceresi → taşıma
       mesajı (Windows/macOS diyalogları da denenecek)
-- [ ] `README.md`: Özellikler'e "satır sağında KOPYALA / YOLU DEĞİŞTİR
+      (ortam başsız olduğundan uygulama 12 sn sorunsuz çalıştığı ve
+      hata vermediği doğrulandı; pencereli görsel kontrol yapılamadı)
+- [x] `README.md`: Özellikler'e "satır sağında KOPYALA / YOLU DEĞİŞTİR
       düğmeleri, hedef klasörü dosya yöneticisinden seçme" satırını ekle
-- [ ] Kapılar yeşilse commit + push: `feat(satir): kopyala ve yolu değiştir
+- [x] Kapılar yeşilse commit + push: `feat(satir): kopyala ve yolu değiştir
       düğmeleri, hedef klasör seçici`
 - [ ] Sürüm istenirse tag + release (`release.yml` artık tag'de otomatik
-      GitHub Release açıp `InEverything.exe` ekliyor)
+      GitHub Release açıp `InEverything.exe`, `InEverything-x86_64.AppImage`
+      ve `InEverything-macos.zip` ekliyor)
