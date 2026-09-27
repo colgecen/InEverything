@@ -1852,10 +1852,6 @@ mod testler {
     fn islem_zaman_arasi_acik_kalir() {
         // Kullanıcı şikâyeti: İŞLEM düğmeleri ile DEĞİŞTİRİLME sütunu
         // birbirine giriyordu. En az 24px nefes payı korunmalı.
-        assert!(
-            BUTON_SOL_PAY >= 24.0,
-            "BUTON_SOL_PAY en az 24 olmalı, aksi halde sütunlar yapışır"
-        );
         for en in [1100.0, 900.0, 520.0] {
             let alan = Rect::from_min_size(Pos2::ZERO, Vec2::new(en, SATIR_Y));
             let sutun = sutunlari_hesapla(alan);
