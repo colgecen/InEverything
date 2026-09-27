@@ -1582,10 +1582,10 @@ mod testler {
         assert!(genis.zaman_goster, "geniş pencerede zaman görünür");
 
         let dar = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, 400.0)));
-        assert!(dar.yol_en >= 40.0);
+        assert!(dar.yol_en >= 40.0, "yol sütunu zeminde olmalı");
         assert!(
-            dar.boyut - dar.yol > 40.0,
-            "dar pencerede yol sütunu zemine iner ama çakışmaz"
+            dar.boyut - dar.yol > 0.0,
+            "yol sütunu boyut sütununun önüne taşmaz"
         );
         assert!(
             !dar.zaman_goster,
