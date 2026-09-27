@@ -32,8 +32,12 @@ const ISARET_X: f32 = 15.0;
 const AD_X: f32 = 36.0;
 /// Sağa hizalı sütunların sağ kenar payı.
 const SAG_PAY: f32 = 16.0;
-/// Boyut sütununun zaman sütununa göre geride kaldığı miktar.
-const SUTUN_ARASI: f32 = 96.0;
+/// Konum ile boyut sütunları arasındaki boşluk.
+const SUTUN_ARASI: f32 = 20.0;
+/// Boyut sütununun genişliği.
+const BOYUT_EN: f32 = 64.0;
+/// "Değiştirilme" sütununun genişliği.
+const ZAMAN_EN: f32 = 104.0;
 /// Satır sağındaki "KOPYALA" düğmesinin genişliği.
 const KOPYA_BUTON_EN: f32 = 54.0;
 /// Satır sağındaki "YOLU DEĞİŞTİR" düğmesinin genişliği.
@@ -1033,13 +1037,13 @@ fn sutunlari_hesapla(alan: Rect) -> Sutunlar {
     let sag = zaman;
     // Dar pencerede zaman sütunu kapanır; boyut onun yerine kayar.
     let boyut = if zaman_goster {
-        (sag - SUTUN_ARASI).max(alan.left() + 120.0)
+        (sag - ZAMAN_EN).max(alan.left() + 120.0)
     } else {
         sag
     };
-    let ad_payi = (alan.width() * 0.34).clamp(180.0, 340.0);
+    let ad_payi = (alan.width() * 0.36).clamp(180.0, 370.0);
     let yol = alan.left() + ad_payi;
-    let yol_en = (boyut - 24.0 - yol).max(40.0);
+    let yol_en = (boyut - BOYUT_EN - SUTUN_ARASI - yol).max(40.0);
     Sutunlar {
         ad: alan.left() + AD_X,
         yol,
@@ -1575,10 +1579,10 @@ mod testler {
     fn sutunlar_genisle_kaymaz() {
         let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
         assert_eq!(genis.ad, AD_X);
-        assert_eq!(genis.yol, 340.0);
-        assert!(genis.yol_en > 400.0);
+        assert_eq!(genis.yol, 370.0);
+        assert!(genis.yol_en > 350.0);
         assert_eq!(genis.zaman, 1100.0 - SAG_PAY - DUGME_ALANI);
-        assert_eq!(genis.boyut, genis.zaman - SUTUN_ARASI);
+        assert_eq!(genis.boyut, genis.zaman - ZAMAN_EN);
         assert!(genis.zaman_goster, "geniş pencerede zaman görünür");
 
         let dar = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, 400.0)));
@@ -1589,6 +1593,20 @@ mod testler {
             "dar pencerede zaman sütunu kapanıp yeri yol sütununa kalır"
         );
         assert_eq!(dar.boyut, dar.zaman);
+    }
+
+    #[test]
+    fn sutun_genislikleri_istenen_yonde() {
+        let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
+        // Ad sütunu genişledi, konum sütunu daraldı.
+        assert!(genis.yol > 340.0, "ad sütunu genişlemeli");
+        assert!(genis.yol_en < 464.0, "konum sütunu daralmalı");
+        // Boyut sütunu dar, değiştirilme sütunu geniş.
+        assert_eq!(genis.zaman - genis.boyut, ZAMAN_EN);
+        assert!(
+            genis.boyut - BOYUT_EN > genis.yol,
+            "boyut sütunu yolun içine taşmaz"
+        );
     }
 
     #[test]
