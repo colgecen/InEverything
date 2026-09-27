@@ -37,19 +37,22 @@ const SUTUN_ARASI: f32 = 20.0;
 /// Boyut sütununun genişliği.
 const BOYUT_EN: f32 = 64.0;
 /// "Değiştirilme" sütununun genişliği.
-const ZAMAN_EN: f32 = 104.0;
-/// Satır sağındaki "KOPYALA" düğmesinin genişliği.
-const KOPYA_BUTON_EN: f32 = 54.0;
+const ZAMAN_EN: f32 = 120.0;
+/// Satır sağındaki "YOLU KOPYALA" düğmesinin genişliği.
+const YOL_KOPYA_EN: f32 = 80.0;
+/// Satır sağındaki "DOSYAYI KOPYALA" düğmesinin genişliği.
+const DOSYA_KOPYA_EN: f32 = 92.0;
 /// Satır sağındaki "YOLU DEĞİŞTİR" düğmesinin genişliği.
-const YOL_BUTON_EN: f32 = 88.0;
+const YOL_DEGISTIR_EN: f32 = 86.0;
 /// İki eylem düğmesi arasındaki boşluk.
 const BUTON_ARA: f32 = 6.0;
-/// Zaman sütunu ile ilk düğme arasındaki boşluk.
+/// Düğmeler ile zaman sütunu arasındaki boşluk.
 const BUTON_SOL_PAY: f32 = 12.0;
 /// Eylem düğmelerinin kapladığı toplam genişlik (zaman sütunu bunu çıkarır).
-const DUGME_ALANI: f32 = KOPYA_BUTON_EN + BUTON_ARA + YOL_BUTON_EN + BUTON_SOL_PAY;
+const DUGME_ALANI: f32 =
+    YOL_KOPYA_EN + BUTON_ARA + DOSYA_KOPYA_EN + BUTON_ARA + YOL_DEGISTIR_EN + BUTON_SOL_PAY;
 /// Pencere bundan darsa "DEĞİŞTİRİLME" sütunu gizlenir, yeri yol sütununa kalır.
-const ZAMAN_ESIGI: f32 = 800.0;
+const ZAMAN_ESIGI: f32 = 900.0;
 
 /// Satırda tetiklenen dosya eylemi.
 enum Eylem {
@@ -713,9 +716,9 @@ impl InEverythingApp {
         }
 
         // eylem düğmelerinin üstündeki başlık
-        let (kopya, yol) = satir_dugmeleri(alan);
+        let (yol_d, _dosya, degistir) = satir_dugmeleri(alan);
         p.text(
-            Pos2::new((kopya.left() + yol.right()) * 0.5, alan.center().y),
+            Pos2::new((yol_d.left() + degistir.right()) * 0.5, alan.center().y),
             Align2::CENTER_CENTER,
             "İŞLEM",
             font,
@@ -802,7 +805,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, y + 78.0),
             Align2::CENTER_CENTER,
-            "sonuç satırına çift tıklayın · sağdaki KOPYALA ve YOLU DEĞİŞTİR düğmeleri",
+            "sonuç satırına çift tıklayın · sağdaki YOLU KOPYALA, DOSYAYI KOPYALA ve YOLU DEĞİŞTİR düğmeleri",
             tema::mono(11.0),
             tema::METIN_3,
         );
@@ -865,7 +868,7 @@ impl InEverythingApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    egui::RichText::new("çift tık aç · sağ tık menü · KOPYALA / YOLU DEĞİŞTİR")
+                    egui::RichText::new("çift tık aç · sağ tık menü · YOLU KOPYALA / DOSYAYI KOPYALA / YOLU DEĞİŞTİR")
                         .font(tema::mono(11.0))
                         .color(tema::METIN_3),
                 );
@@ -1041,7 +1044,7 @@ fn sutunlari_hesapla(alan: Rect) -> Sutunlar {
     } else {
         sag
     };
-    let ad_payi = (alan.width() * 0.36).clamp(180.0, 370.0);
+    let ad_payi = (alan.width() * 0.32).clamp(180.0, 340.0);
     let yol = alan.left() + ad_payi;
     let yol_en = (boyut - BOYUT_EN - SUTUN_ARASI - yol).max(40.0);
     Sutunlar {
@@ -1081,20 +1084,25 @@ fn dosya_rengi(ad: &str, klasor: bool) -> Color32 {
     }
 }
 
-/// Satırın sağındaki eylem düğmelerinin dikdörtgenleri (kopyala, yolu değiştir).
-fn satir_dugmeleri(alan: Rect) -> (Rect, Rect) {
+/// Satırın sağındaki eylem düğmelerinin dikdörtgenleri (yolu kopyala,
+/// dosyayı kopyala, yolu değiştir).
+fn satir_dugmeleri(alan: Rect) -> (Rect, Rect, Rect) {
     let boy = 20.0;
     let y = alan.center().y - boy * 0.5;
     let sag = alan.right() - SAG_PAY;
+    let degistir = Rect::from_min_size(
+        Pos2::new(sag - YOL_DEGISTIR_EN, y),
+        Vec2::new(YOL_DEGISTIR_EN, boy),
+    );
+    let dosya = Rect::from_min_size(
+        Pos2::new(degistir.left() - BUTON_ARA - DOSYA_KOPYA_EN, y),
+        Vec2::new(DOSYA_KOPYA_EN, boy),
+    );
     let yol = Rect::from_min_size(
-        Pos2::new(sag - YOL_BUTON_EN, y),
-        Vec2::new(YOL_BUTON_EN, boy),
+        Pos2::new(dosya.left() - BUTON_ARA - YOL_KOPYA_EN, y),
+        Vec2::new(YOL_KOPYA_EN, boy),
     );
-    let kopya = Rect::from_min_size(
-        Pos2::new(yol.left() - BUTON_ARA - KOPYA_BUTON_EN, y),
-        Vec2::new(KOPYA_BUTON_EN, boy),
-    );
-    (kopya, yol)
+    (yol, dosya, degistir)
 }
 
 /// Satır eylem düğmesinin görünümü ve ipucu.
@@ -1166,8 +1174,8 @@ fn satir_dugmesi_ciz(
     yanit
 }
 
-/// Bir sonucun satırını neon temayla çizer; düğmeye basıldıysa veya
-/// kopyala menüsünden bir seçim yapıldıysa tetiklenen eylemi döndürür.
+/// Bir sonucun satırını neon temayla çizer; bir düğmeye basıldıysa
+/// tetiklenen eylemi döndürür.
 fn satiri_ciz(
     ui: &egui::Ui,
     p: &egui::Painter,
@@ -1310,65 +1318,53 @@ fn satiri_ciz(
         tema::kontur(1.0, tema::CETVEL.gamma_multiply(0.45)),
     );
 
-    // sağdaki eylem düğmeleri: kopyala (menülü) ve yolu değiştir
-    let kopya_tanim = DugmeTanimi {
-        etiket: "KOPYALA",
-        ipucu: "Yolu veya dosyayı kopyala",
+    // sağdaki eylem düğmeleri: yolu kopyala, dosyayı kopyala, yolu değiştir
+    let yol_tanim = DugmeTanimi {
+        etiket: "YOLU KOPYALA",
+        ipucu: "Dosya yolunu panoya kopyala",
         renk: tema::MOR,
     };
-    let yol_tanim = DugmeTanimi {
+    let dosya_tanim = DugmeTanimi {
+        etiket: "DOSYAYI KOPYALA",
+        ipucu: "Dosyayı dosya yöneticisiyle seçilen klasöre kopyala",
+        renk: tema::MOR,
+    };
+    let degistir_tanim = DugmeTanimi {
         etiket: "YOLU DEĞİŞTİR",
         ipucu: "Dosyayı başka klasöre taşı — hedefi dosya yöneticisinden seç",
         renk: tema::NEON,
     };
-    let (kopya, yol) = satir_dugmeleri(alan);
-    let kopya_yanit = satir_dugmesi_ciz(
+    let (yol_d, dosya_d, degistir_d) = satir_dugmeleri(alan);
+    if satir_dugmesi_ciz(
         ui,
         p,
-        kopya,
-        kimlik.with("kopyala"),
-        &kopya_tanim,
+        yol_d,
+        kimlik.with("yolu_kopyala"),
+        &yol_tanim,
         secili_mi,
-    );
-    // KOPYALA'ya basılınca "Yolu kopyala" / "Dosyayı kopyala" menüsü açılır.
-    let menu_id = kimlik.with("kopyala_menu");
-    if kopya_yanit.clicked() {
-        ui.memory_mut(|bellek| {
-            if bellek.is_popup_open(menu_id) {
-                bellek.close_popup();
-            } else {
-                bellek.close_popup();
-                bellek.open_popup(menu_id);
-            }
-        });
-    }
-    if ui.memory(|bellek| bellek.is_popup_open(menu_id)) {
-        if let Some(secim) = egui::containers::popup::popup_below_widget(
-            ui,
-            menu_id,
-            &kopya_yanit,
-            egui::containers::popup::PopupCloseBehavior::CloseOnClickOutside,
-            |ui| {
-                let mut secim = None;
-                if ui.button("Yolu kopyala").clicked() {
-                    secim = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
-                }
-                if ui.button("Dosyayı kopyala").clicked() {
-                    secim = Some(Eylem::DosyaKopyala(PathBuf::from(&veri.yol)));
-                }
-                secim
-            },
-        ) {
-            ui.memory_mut(|bellek| bellek.close_popup());
-            return secim;
-        }
+    )
+    .clicked()
+    {
+        return Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
     }
     if satir_dugmesi_ciz(
         ui,
         p,
-        yol,
+        dosya_d,
+        kimlik.with("dosyayi_kopyala"),
+        &dosya_tanim,
+        secili_mi,
+    )
+    .clicked()
+    {
+        return Some(Eylem::DosyaKopyala(PathBuf::from(&veri.yol)));
+    }
+    if satir_dugmesi_ciz(
+        ui,
+        p,
+        degistir_d,
         kimlik.with("yolu_degistir"),
-        &yol_tanim,
+        &degistir_tanim,
         secili_mi,
     )
     .clicked()
@@ -1579,15 +1575,18 @@ mod testler {
     fn sutunlar_genisle_kaymaz() {
         let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
         assert_eq!(genis.ad, AD_X);
-        assert_eq!(genis.yol, 370.0);
-        assert!(genis.yol_en > 350.0);
+        assert_eq!(genis.yol, 340.0);
+        assert!(genis.yol_en > 250.0);
         assert_eq!(genis.zaman, 1100.0 - SAG_PAY - DUGME_ALANI);
         assert_eq!(genis.boyut, genis.zaman - ZAMAN_EN);
         assert!(genis.zaman_goster, "geniş pencerede zaman görünür");
 
         let dar = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, 400.0)));
         assert!(dar.yol_en >= 40.0);
-        assert!(dar.boyut - dar.yol > 100.0, "yol sütunu sığmalı");
+        assert!(
+            dar.boyut - dar.yol > 40.0,
+            "dar pencerede yol sütunu zemine iner ama çakışmaz"
+        );
         assert!(
             !dar.zaman_goster,
             "dar pencerede zaman sütunu kapanıp yeri yol sütununa kalır"
@@ -1598,10 +1597,12 @@ mod testler {
     #[test]
     fn sutun_genislikleri_istenen_yonde() {
         let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
-        // Ad sütunu genişledi, konum sütunu daraldı.
-        assert!(genis.yol > 340.0, "ad sütunu genişlemeli");
-        assert!(genis.yol_en < 464.0, "konum sütunu daralmalı");
-        // Boyut sütunu dar, değiştirilme sütunu geniş.
+        // Konum sütunu daraldı, değiştirilme sütunu genişledi.
+        assert!(genis.yol_en < 300.0, "konum sütunu daralmalı");
+        assert!(
+            genis.zaman - genis.boyut > 104.0,
+            "değiştirilme genişlemeli"
+        );
         assert_eq!(genis.zaman - genis.boyut, ZAMAN_EN);
         assert!(
             genis.boyut - BOYUT_EN > genis.yol,
@@ -1622,12 +1623,13 @@ mod testler {
     fn dugmeler_zaman_sutununun_saginda_kalir() {
         let alan = Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, SATIR_Y));
         let sutun = sutunlari_hesapla(alan);
-        let (kopya, yol) = satir_dugmeleri(alan);
+        let (yol, dosya, degistir) = satir_dugmeleri(alan);
 
-        assert_eq!(yol.right(), alan.right() - SAG_PAY);
-        assert_eq!(kopya.right() + BUTON_ARA, yol.left());
+        assert_eq!(degistir.right(), alan.right() - SAG_PAY);
+        assert_eq!(dosya.right() + BUTON_ARA, degistir.left());
+        assert_eq!(yol.right() + BUTON_ARA, dosya.left());
         assert!(
-            kopya.left() - sutun.zaman >= BUTON_SOL_PAY,
+            yol.left() - sutun.zaman >= BUTON_SOL_PAY,
             "zaman sütunu ile düğmeler arasında boşluk kalmalı"
         );
         assert!(

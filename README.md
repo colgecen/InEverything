@@ -13,7 +13,7 @@ Everything benzeri, anlık açılan ultra hızlı dosya arama uygulaması (Rust 
 - Uzantı filtresi (`*.pdf`) ve birleşik sorgu (`*.pdf rapor`)
 - Sanallaştırılmış sonuç listesi (varsayılan 10 bin satır akıcı)
 - Sağ tık menüsü: aç, dosya konumunu aç, yolu kopyala
-- Satır sağında KOPYALA / YOLU DEĞİŞTİR düğmeleri; KOPYALA menüsünden yolu kopyalama veya dosyayı dosya yöneticisiyle seçilen klasöre kopyalama, YOLU DEĞİŞTİR ile dosyayı taşıma
+- Satır sağında YOLU KOPYALA / DOSYAYI KOPYALA / YOLU DEĞİŞTİR düğmeleri; yolu panoya kopyalama, dosyayı dosya yöneticisiyle seçilen klasöre kopyalama ve dosyayı taşıma
 - Futuristik neon tema, gömülü logo, Windows/macOS/Linux desteği
 
 ## Kurulum
@@ -39,10 +39,9 @@ Projenin nasıl kullanılacağına dair örnek:
 Arama kutusuna yazmaya başlayın; sonuçlar yazarken filtrelenir. Satır
 **çift tık** ile dosya açılır, **sağ tık** menüsünde `Aç`,
 `Dosya konumunu aç` ve `Yolu kopyala` bulunur. Satır sağındaki
-**KOPYALA** düğmesi menü açar: `Yolu kopyala` panoya kopyalar,
-`Dosyayı kopyala` dosya yöneticisi penceresiyle hedef klasür seçtirip
-dosyayı oraya kopyalar. **YOLU DEĞİŞTİR** ise dosyayı seçilen klasöre
-taşır.
+**YOLU KOPYALA** panoya kopyalar, **DOSYAYI KOPYALA** dosya yöneticisi
+penceresiyle hedef klasür seçtirip dosyayı oraya kopyalar,
+**YOLU DEĞİŞTİR** ise dosyayı seçilen klasöre taşır.
 
 Yapılandırma `~/.config/InEverything/config.json`, indeks
 `~/.local/share/InEverything/indeks.bin` altında tutulur.
