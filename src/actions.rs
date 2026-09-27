@@ -78,6 +78,58 @@ pub fn dosyayi_tasi(kaynak: &Path, hedef_klasor: &Path) -> Result<PathBuf> {
     Ok(hedef)
 }
 
+/// "Yolu değiştir" işleminin sonucu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TasimaSonucu {
+    /// Klasör seçici iptal edildi; hiçbir şey yapılmadı.
+    Iptal,
+    /// Dosya zaten seçilen klasörde.
+    AyniKlasor,
+    /// Dosya yeni yola taşındı.
+    Tasindi(PathBuf),
+}
+
+/// Dosya yöneticisi penceresinde hedef klasör seçtirir.
+///
+/// İptal edilirse `None` döner. `baslangic` başlangıç klasörüdür (genelde
+/// dosyanın bulunduğu klasör); boş verilirse sistem varsayılanı açılır.
+pub fn klasor_sec(baslangic: Option<&Path>) -> Option<PathBuf> {
+    let istek = rfd::FileDialog::new().set_title("Dosyanın taşınacağı klasörü seç");
+    let istek = match baslangic {
+        Some(klasor) if !klasor.as_os_str().is_empty() => istek.set_directory(klasor),
+        _ => istek,
+    };
+    istek.pick_folder()
+}
+
+/// Dosya yöneticisiyle hedef klasörü seçtirip dosyayı oraya taşır.
+pub fn yolu_degistir(kaynak: &Path) -> Result<TasimaSonucu> {
+    let baslangic = kaynak.parent();
+    let Some(hedef_klasor) = klasor_sec(baslangic) else {
+        return Ok(TasimaSonucu::Iptal);
+    };
+    tasi_hedefe(kaynak, &hedef_klasor)
+}
+
+/// Seçilen hedef klasöre taşımanın kurallarını doğrular ve uygular.
+///
+/// Aynı klasör seçilmişse dosyaya dokunmadan `AyniKlasor` döner; hedefte
+/// aynı adlı bir kayıt varsa mevcut veriyi ezmemek için hata verir.
+pub fn tasi_hedefe(kaynak: &Path, hedef_klasor: &Path) -> Result<TasimaSonucu> {
+    let hedef = hedef_yolu_hesapla(kaynak, hedef_klasor)?;
+    if hedef == kaynak {
+        return Ok(TasimaSonucu::AyniKlasor);
+    }
+    if hedef_klasor.starts_with(kaynak) {
+        anyhow::bail!("bir klasör kendi içine taşınamaz: {}", kaynak.display());
+    }
+    if hedef.exists() {
+        anyhow::bail!("hedefte aynı adlı kayıt var: {}", hedef.display());
+    }
+    let yeni = dosyayi_tasi(kaynak, hedef_klasor)?;
+    Ok(TasimaSonucu::Tasindi(yeni))
+}
+
 #[cfg(test)]
 mod testler {
     use super::*;
@@ -127,5 +179,62 @@ mod testler {
         let yeni = dosyayi_tasi(&kaynak, &hedef_klasor).expect("taşı");
         assert!(!kaynak.exists());
         assert_eq!(std::fs::read(&yeni).expect("oku"), b"veri");
+    }
+
+    #[test]
+    fn ayni_klasor_secilirse_dosya_kalir() {
+        let dizin = tempfile::tempdir().expect("geçici dizin");
+        let kaynak = dizin.path().join("not.txt");
+        std::fs::write(&kaynak, b"ic").expect("yaz");
+
+        let sonuc = tasi_hedefe(&kaynak, dizin.path()).expect("taşı");
+        assert_eq!(sonuc, TasimaSonucu::AyniKlasor);
+        assert!(kaynak.exists(), "dosya yerinde kalmalı");
+    }
+
+    #[test]
+    fn hedefte_ayni_ad_varken_ezilmez() {
+        let dizin = tempfile::tempdir().expect("geçici dizin");
+        let kaynak = dizin.path().join("kaynak");
+        let hedef = dizin.path().join("hedef");
+        std::fs::create_dir(&hedef).expect("klasör");
+        std::fs::write(&kaynak, b"yeni").expect("yaz");
+        std::fs::write(hedef.join("kaynak"), b"eski").expect("yaz");
+
+        let hata = tasi_hedefe(&kaynak, &hedef).expect_err("çakışma hatası vermeli");
+        assert!(hata.to_string().contains("aynı adlı"));
+        assert_eq!(
+            std::fs::read(hedef.join("kaynak")).expect("oku"),
+            b"eski",
+            "mevcut dosya korunmalı"
+        );
+    }
+
+    #[test]
+    fn klasor_kendisine_tasinamaz() {
+        let dizin = tempfile::tempdir().expect("geçici dizin");
+        let ic = dizin.path().join("ic");
+        std::fs::create_dir(&ic).expect("klasör");
+
+        let hata = tasi_hedefe(&ic, &ic).expect_err("kendi içine taşınamaz");
+        assert!(hata.to_string().contains("kendi içine"));
+        assert!(ic.exists());
+    }
+
+    #[test]
+    fn secilen_klasore_tasinir() {
+        let dizin = tempfile::tempdir().expect("geçici dizin");
+        let kaynak = dizin.path().join("tasinacak.txt");
+        let hedef = dizin.path().join("yeni_yer");
+        std::fs::write(&kaynak, b"veri").expect("yaz");
+        std::fs::create_dir(&hedef).expect("klasör");
+
+        let sonuc = tasi_hedefe(&kaynak, &hedef).expect("taşı");
+        assert_eq!(sonuc, TasimaSonucu::Tasindi(hedef.join("tasinacak.txt")));
+        assert!(!kaynak.exists());
+        assert_eq!(
+            std::fs::read(hedef.join("tasinacak.txt")).expect("oku"),
+            b"veri"
+        );
     }
 }

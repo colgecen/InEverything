@@ -102,3 +102,56 @@ Linux'ta NTFS MFT eşdeğeri olmadığından tek yolumuz diske yazılmış indek
       kaynaktan gelir (kaynak yoksa eski yedek korunur)
 - [x] `gomulu_logo_cozulur` testi: gömülü JPEG çözülemezse kapı düşer
 - [x] Kapılar yeşil: `fmt`, `clippy -D warnings`, 67 test, release derlemesi
+
+## Aşama 10: Satır eylem düğmeleri + hedef klasör seçici (2026-09-27)
+
+İstenen: sonuç satırının sağında **kopyalama** ve **yolu değiştir**
+düğmeleri; yol seçilirken **dosya yöneticisi** açılıp klasör seçilecek.
+
+### Tamamlanan
+
+- [x] `Cargo.toml`: `rfd = "0.17"` eklendi (Windows/macOS yerel klasör
+      seçici, Linux'ta xdg-desktop-portal; `Cargo.lock` güncellendi)
+- [x] `actions.rs`:
+      - `TasimaSonucu` (`Iptal` / `AyniKlasor` / `Tasindi(PathBuf)`)
+      - `klasor_sec(baslangic)` → dosya yöneticisi penceresi (İptal ise `None`)
+      - `yolu_degistir(kaynak)` → dosyanın klasöründen başlayıp hedefi seçtirir
+      - `tasi_hedefe(kaynak, hedef)` → aynı klasör / hedefte aynı ad /
+        klasörü kendi içine taşıma kontrolleri, sonra `dosyayi_tasi`
+      - 5 yeni test: aynı klasör, çakışma (ezme yok), kendi içine taşıma,
+        başarılı taşıma, `dosyayi_tasi`
+- [x] `app.rs` arayüzü:
+      - `Eylem::YoluDegistir` + `eylemi_uygula` durum çubuğu mesajları
+        (iptal / zaten burada / taşındı / hata)
+      - `SatirDugmesi` (`Kopyala`, `YoluDegistir`), `DugmeTanimi`,
+        `SatirCizim` (argüman taşması için; clippy `too_many_arguments` geçti)
+      - `satir_dugmeleri(alan)` → sağda `KOPYALA` (mor) + `YOLU DEĞİŞTİR`
+        (neon) dikdörtgenleri; `satir_dugmesi_ciz` hover'da neon parlar,
+        tooltip taşır
+      - `satiri_ciz` artık `Option<SatirDugmesi>` döner; düğmeye basılınca
+        satır seçimi/çift tık tetiklenmez (egui hit-test düğmeyi üstte alır)
+      - sütunlar: `Sutunlar.zaman_goster`, `DUGME_ALANI = 160`,
+        `ZAMAN_ESIGI = 800` — dar pencerede "DEĞİŞTİRİLME" kapanır, yeri
+        yol/boyut sütununa kalır; klasör satırında "—" yerine "klasör"
+      - sütun başlığına **İŞLEM** etiketi; sağ tık menüsüne "Yolu değiştir…";
+        alt çubuk ipucu ve boş ekran metni güncellendi
+- [x] Yeni testler: `dugmeler_zaman_sutununun_saginda_kalir`,
+      `zaman_sutunu_esiginde_kapanir`, `sutunlar_genisle_kaymaz` güncellendi
+- [x] Kapılar (şu an yeşil): `cargo fmt --check`,
+      `cargo clippy --all-targets -- -D warnings`, `cargo test` → **70 lib +
+      3 entegrasyon = 73 test geçti**
+
+### Sıradaki adımlar (yapılacak)
+
+- [ ] `cargo build --release --locked --all-targets` (4. kapı; `Cargo.lock`
+      rfd yüzünden değişti, release derlemesi henüz koşulmadı)
+- [ ] Uygulamayı çalıştırıp **görsel doğrulama**: satır sağındaki iki düğme
+      hizası, hover parıltısı, dar pencerede (<800 px) zaman sütununun
+      kapanması, `YOLU DEĞİŞTİR` → dosya yöneticisi penceresi → taşıma
+      mesajı (Windows/macOS diyalogları da denenecek)
+- [ ] `README.md`: Özellikler'e "satır sağında KOPYALA / YOLU DEĞİŞTİR
+      düğmeleri, hedef klasörü dosya yöneticisinden seçme" satırını ekle
+- [ ] Kapılar yeşilse commit + push: `feat(satir): kopyala ve yolu değiştir
+      düğmeleri, hedef klasör seçici`
+- [ ] Sürüm istenirse tag + release (`release.yml` artık tag'de otomatik
+      GitHub Release açıp `InEverything.exe` ekliyor)

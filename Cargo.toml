@@ -34,6 +34,9 @@ memmap2 = "0.9"
 # Yalnızca pencere/masaüstü logosunu çözmek için (assets/InEverything.jpg);
 # bayt kodlayıcı gerekmediği için özellikler daraltıldı.
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# "Yolu değiştir" için yerel dosya yöneticisi klasör seçici (Windows/macOS
+# yerel diyalog, Linux'ta xdg-desktop-portal).
+rfd = "0.17"
 
 [dev-dependencies]
 tempfile = "3"

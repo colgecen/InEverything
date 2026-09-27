@@ -34,12 +34,34 @@ const AD_X: f32 = 36.0;
 const SAG_PAY: f32 = 16.0;
 /// Boyut sütununun zaman sütununa göre geride kaldığı miktar.
 const SUTUN_ARASI: f32 = 96.0;
+/// Satır sağındaki "KOPYALA" düğmesinin genişliği.
+const KOPYA_BUTON_EN: f32 = 54.0;
+/// Satır sağındaki "YOLU DEĞİŞTİR" düğmesinin genişliği.
+const YOL_BUTON_EN: f32 = 88.0;
+/// İki eylem düğmesi arasındaki boşluk.
+const BUTON_ARA: f32 = 6.0;
+/// Zaman sütunu ile ilk düğme arasındaki boşluk.
+const BUTON_SOL_PAY: f32 = 12.0;
+/// Eylem düğmelerinin kapladığı toplam genişlik (zaman sütunu bunu çıkarır).
+const DUGME_ALANI: f32 = KOPYA_BUTON_EN + BUTON_ARA + YOL_BUTON_EN + BUTON_SOL_PAY;
+/// Pencere bundan darsa "DEĞİŞTİRİLME" sütunu gizlenir, yeri yol sütununa kalır.
+const ZAMAN_ESIGI: f32 = 800.0;
 
 /// Satırda tetiklenen dosya eylemi.
 enum Eylem {
     Ac(PathBuf),
     KonumuAc(PathBuf),
     YoluKopyala(PathBuf),
+    YoluDegistir(PathBuf),
+}
+
+/// Satırın sağındaki eylem düğmesine basıldığında dönen seçim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SatirDugmesi {
+    /// Dosya yolunu panoya kopyala.
+    Kopyala,
+    /// Dosyayı başka klasöre taşı (hedef dosya yöneticisiyle seçilir).
+    YoluDegistir,
 }
 
 /// Arayüzde listelenen bir satırın kaynağı.
@@ -79,6 +101,8 @@ struct Sutunlar {
     yol_en: f32,
     boyut: f32,
     zaman: f32,
+    /// Dar pencerede "DEĞİŞTİRİLME" sütunu gizlenir.
+    zaman_goster: bool,
 }
 
 /// Ana uygulama durumu.
@@ -324,6 +348,16 @@ impl InEverythingApp {
             Eylem::YoluKopyala(yol) => actions::panoya_yolu_kopyala(&yol)
                 .map(|()| format!("Yol kopyalandı: {}", yol.display()))
                 .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
+            Eylem::YoluDegistir(yol) => match actions::yolu_degistir(&yol) {
+                Ok(actions::TasimaSonucu::Iptal) => String::from("Taşıma iptal edildi"),
+                Ok(actions::TasimaSonucu::AyniKlasor) => {
+                    format!("Dosya zaten bu klasörde: {}", yol.display())
+                }
+                Ok(actions::TasimaSonucu::Tasindi(yeni)) => {
+                    format!("Taşındı: {}", yeni.display())
+                }
+                Err(hata) => format!("Taşınamadı: {hata:#}"),
+            },
         }
     }
 
@@ -659,15 +693,29 @@ impl InEverythingApp {
                 Align2::RIGHT_CENTER,
                 "BOYUT",
             ),
-            (
-                Pos2::new(sutunlar.zaman, alan.center().y),
-                Align2::RIGHT_CENTER,
-                "DEĞİŞTİRİLME",
-            ),
         ];
         for (konum, hiza, metin) in basliklar {
             p.text(konum, hiza, metin, font.clone(), tema::METIN_3);
         }
+        if sutunlar.zaman_goster {
+            p.text(
+                Pos2::new(sutunlar.zaman, alan.center().y),
+                Align2::RIGHT_CENTER,
+                "DEĞİŞTİRİLME",
+                font.clone(),
+                tema::METIN_3,
+            );
+        }
+
+        // eylem düğmelerinin üstündeki başlık
+        let (kopya, yol) = satir_dugmeleri(alan);
+        p.text(
+            Pos2::new((kopya.left() + yol.right()) * 0.5, alan.center().y),
+            Align2::CENTER_CENTER,
+            "İŞLEM",
+            font,
+            tema::METIN_3,
+        );
     }
 
     /// Sorgu boşken görünen karşılama ekranı: büyük başlık ve örnek çipler.
@@ -749,7 +797,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, y + 78.0),
             Align2::CENTER_CENTER,
-            "sonuç satırına çift tıklayın · sağ tık ile menü",
+            "sonuç satırına çift tıklayın · sağdaki KOPYALA ve YOLU DEĞİŞTİR düğmeleri",
             tema::mono(11.0),
             tema::METIN_3,
         );
@@ -802,7 +850,7 @@ impl InEverythingApp {
                 &self.durum_mesaji,
                 tema::mono(12.5),
                 tema::METIN_2,
-                (genislik - 330.0).max(90.0),
+                (genislik - 430.0).max(90.0),
             );
             ui.label(
                 egui::RichText::new(mesaj)
@@ -812,7 +860,7 @@ impl InEverythingApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    egui::RichText::new("sağ tık menü · ⏎ aç · çift tık konum")
+                    egui::RichText::new("çift tık aç · sağ tık menü · KOPYALA / YOLU DEĞİŞTİR")
                         .font(tema::mono(11.0))
                         .color(tema::METIN_3),
                 );
@@ -865,20 +913,33 @@ impl InEverythingApp {
                                 Vec2::new(ui.available_width(), SATIR_Y),
                                 Sense::click(),
                             );
-                            satiri_ciz(
+                            let dugme = satiri_ciz(
                                 ui,
                                 &p,
                                 yanit.rect,
                                 &yanit,
-                                &veri,
-                                secili_konum == Some(konum),
-                                &sutunlar,
+                                &SatirCizim {
+                                    veri: &veri,
+                                    secili_mi: secili_konum == Some(konum),
+                                    sutunlar: &sutunlar,
+                                    kimlik: ui.id().with(("satir_dugme", konum)),
+                                },
                             );
-                            if yanit.clicked() {
-                                secili_yeni = Some(konum);
-                            }
-                            if yanit.double_clicked() {
-                                eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
+                            match dugme {
+                                Some(SatirDugmesi::Kopyala) => {
+                                    eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
+                                }
+                                Some(SatirDugmesi::YoluDegistir) => {
+                                    eylem = Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
+                                }
+                                None => {
+                                    if yanit.clicked() {
+                                        secili_yeni = Some(konum);
+                                    }
+                                    if yanit.double_clicked() {
+                                        eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
+                                    }
+                                }
                             }
                             yanit.context_menu(|ui| {
                                 if ui.button("Aç").clicked() {
@@ -891,6 +952,10 @@ impl InEverythingApp {
                                 }
                                 if ui.button("Yolu kopyala").clicked() {
                                     eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
+                                    ui.close_menu();
+                                }
+                                if ui.button("Yolu değiştir…").clicked() {
+                                    eylem = Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
                             });
@@ -970,9 +1035,16 @@ impl eframe::App for InEverythingApp {
 
 /// Verilen dikdörtgende sütunların x konumlarını hesaplar.
 fn sutunlari_hesapla(alan: Rect) -> Sutunlar {
-    let sag = alan.right() - SAG_PAY;
-    let zaman = sag;
-    let boyut = (sag - SUTUN_ARASI).max(alan.left() + 120.0);
+    // Sağda eylem düğmeleri duracağı için zaman sütunu onların solunda biter.
+    let zaman = alan.right() - SAG_PAY - DUGME_ALANI;
+    let zaman_goster = alan.width() >= ZAMAN_ESIGI;
+    let sag = zaman;
+    // Dar pencerede zaman sütunu kapanır; boyut onun yerine kayar.
+    let boyut = if zaman_goster {
+        (sag - SUTUN_ARASI).max(alan.left() + 120.0)
+    } else {
+        sag
+    };
     let ad_payi = (alan.width() * 0.34).clamp(180.0, 340.0);
     let yol = alan.left() + ad_payi;
     let yol_en = (boyut - 24.0 - yol).max(40.0);
@@ -982,6 +1054,7 @@ fn sutunlari_hesapla(alan: Rect) -> Sutunlar {
         yol_en,
         boyut,
         zaman,
+        zaman_goster,
     }
 }
 
@@ -1012,16 +1085,108 @@ fn dosya_rengi(ad: &str, klasor: bool) -> Color32 {
     }
 }
 
-/// Bir sonucun satırını neon temayla çizer.
+/// Satırın sağındaki eylem düğmelerinin dikdörtgenleri (kopyala, yolu değiştir).
+fn satir_dugmeleri(alan: Rect) -> (Rect, Rect) {
+    let boy = 20.0;
+    let y = alan.center().y - boy * 0.5;
+    let sag = alan.right() - SAG_PAY;
+    let yol = Rect::from_min_size(
+        Pos2::new(sag - YOL_BUTON_EN, y),
+        Vec2::new(YOL_BUTON_EN, boy),
+    );
+    let kopya = Rect::from_min_size(
+        Pos2::new(yol.left() - BUTON_ARA - KOPYA_BUTON_EN, y),
+        Vec2::new(KOPYA_BUTON_EN, boy),
+    );
+    (kopya, yol)
+}
+
+/// Satır eylem düğmesinin görünümü ve ipucu.
+struct DugmeTanimi {
+    etiket: &'static str,
+    ipucu: &'static str,
+    renk: Color32,
+}
+
+/// Satırı çizerken değişmeyen alanların toplu taşınması.
+struct SatirCizim<'a> {
+    veri: &'a SatirVerisi,
+    secili_mi: bool,
+    sutunlar: &'a Sutunlar,
+    kimlik: egui::Id,
+}
+
+/// Satırın eylem düğmesini neon temayla çizer; basıldıysa `true` döner.
+fn satir_dugmesi_ciz(
+    ui: &egui::Ui,
+    p: &egui::Painter,
+    dikdortgen: Rect,
+    kimlik: egui::Id,
+    tanim: &DugmeTanimi,
+    satir_vurgulu: bool,
+) -> bool {
+    let DugmeTanimi {
+        etiket,
+        ipucu,
+        renk,
+    } = tanim;
+    let yanit = ui
+        .interact(dikdortgen, kimlik, Sense::click())
+        .on_hover_text(*ipucu);
+    let ugrunda = yanit.hovered();
+    let parlak = ugrunda || satir_vurgulu;
+    p.rect_filled(
+        dikdortgen,
+        Rounding::same(7.0),
+        renk.gamma_multiply(if ugrunda {
+            0.24
+        } else if parlak {
+            0.13
+        } else {
+            0.07
+        }),
+    );
+    p.rect_stroke(
+        dikdortgen,
+        Rounding::same(7.0),
+        tema::kontur(1.0, renk.gamma_multiply(if parlak { 0.85 } else { 0.35 })),
+    );
+    if ugrunda {
+        tema::neon_cerceve(p, dikdortgen, 7.0, *renk, 0.55);
+    }
+    p.text(
+        dikdortgen.center(),
+        Align2::CENTER_CENTER,
+        tema::kes(
+            ui,
+            etiket,
+            tema::kalin(9.0),
+            *renk,
+            dikdortgen.width() - 8.0,
+        ),
+        tema::kalin(9.0),
+        renk.gamma_multiply(if parlak { 1.0 } else { 0.7 }),
+    );
+    yanit.clicked()
+}
+
+/// Bir sonucun satırını neon temayla çizer; sağdaki düğmelere basıldıysa
+/// hangisinin basıldığını döndürür.
 fn satiri_ciz(
     ui: &egui::Ui,
     p: &egui::Painter,
     alan: Rect,
     yanit: &egui::Response,
-    veri: &SatirVerisi,
-    secili_mi: bool,
-    sutunlar: &Sutunlar,
-) {
+    cizim: &SatirCizim<'_>,
+) -> Option<SatirDugmesi> {
+    let SatirCizim {
+        veri,
+        secili_mi,
+        sutunlar,
+        kimlik,
+    } = cizim;
+    let secili_mi = *secili_mi;
+    let kimlik = *kimlik;
     // zemin
     let dolgu = if secili_mi {
         tema::NEON.gamma_multiply(0.15)
@@ -1109,14 +1274,14 @@ fn satiri_ciz(
 
     // sağa hizalı boyut ve zaman
     let boyut = if veri.klasor {
-        String::from("—")
+        // Dar pencerede zaman sütunu yokken "klasör" etiketi boyut yerine geçer.
+        if sutunlar.zaman_goster {
+            String::from("—")
+        } else {
+            String::from("klasör")
+        }
     } else {
         boyutu_bicimlendir(veri.boyut)
-    };
-    let zaman = if veri.klasor {
-        String::from("klasör")
-    } else {
-        zamani_bicimlendir(veri.zaman)
     };
     p.text(
         Pos2::new(sutunlar.boyut, alan.center().y),
@@ -1125,13 +1290,20 @@ fn satiri_ciz(
         tema::mono(11.5),
         tema::METIN_2,
     );
-    p.text(
-        Pos2::new(sutunlar.zaman, alan.center().y),
-        Align2::RIGHT_CENTER,
-        zaman,
-        tema::mono(11.0),
-        tema::METIN_3,
-    );
+    if sutunlar.zaman_goster {
+        let zaman = if veri.klasor {
+            String::from("klasör")
+        } else {
+            zamani_bicimlendir(veri.zaman)
+        };
+        p.text(
+            Pos2::new(sutunlar.zaman, alan.center().y),
+            Align2::RIGHT_CENTER,
+            zaman,
+            tema::mono(11.0),
+            tema::METIN_3,
+        );
+    }
 
     // satır ayracı
     p.line_segment(
@@ -1141,6 +1313,40 @@ fn satiri_ciz(
         ],
         tema::kontur(1.0, tema::CETVEL.gamma_multiply(0.45)),
     );
+
+    // sağdaki eylem düğmeleri: kopyala ve yolu değiştir
+    let kopya_tanim = DugmeTanimi {
+        etiket: "KOPYALA",
+        ipucu: "Dosya yolunu panoya kopyala",
+        renk: tema::MOR,
+    };
+    let yol_tanim = DugmeTanimi {
+        etiket: "YOLU DEĞİŞTİR",
+        ipucu: "Dosyayı başka klasöre taşı — hedefi dosya yöneticisinden seç",
+        renk: tema::NEON,
+    };
+    let (kopya, yol) = satir_dugmeleri(alan);
+    if satir_dugmesi_ciz(
+        ui,
+        p,
+        kopya,
+        kimlik.with("kopyala"),
+        &kopya_tanim,
+        secili_mi,
+    ) {
+        return Some(SatirDugmesi::Kopyala);
+    }
+    if satir_dugmesi_ciz(
+        ui,
+        p,
+        yol,
+        kimlik.with("yolu_degistir"),
+        &yol_tanim,
+        secili_mi,
+    ) {
+        return Some(SatirDugmesi::YoluDegistir);
+    }
+    None
 }
 
 /// Satırın benzersiz konumu (seçili satırın korunması için).
@@ -1345,13 +1551,50 @@ mod testler {
         let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
         assert_eq!(genis.ad, AD_X);
         assert_eq!(genis.yol, 340.0);
-        assert!(genis.yol_en > 500.0);
-        assert_eq!(genis.zaman, 1100.0 - SAG_PAY);
+        assert!(genis.yol_en > 400.0);
+        assert_eq!(genis.zaman, 1100.0 - SAG_PAY - DUGME_ALANI);
         assert_eq!(genis.boyut, genis.zaman - SUTUN_ARASI);
+        assert!(genis.zaman_goster, "geniş pencerede zaman görünür");
 
         let dar = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, 400.0)));
         assert!(dar.yol_en >= 40.0);
         assert!(dar.boyut - dar.yol > 100.0, "yol sütunu sığmalı");
+        assert!(
+            !dar.zaman_goster,
+            "dar pencerede zaman sütunu kapanıp yeri yol sütununa kalır"
+        );
+        assert_eq!(dar.boyut, dar.zaman);
+    }
+
+    #[test]
+    fn zaman_sutunu_esiginde_kapanir() {
+        let olc = |en: f32| {
+            sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(en, 400.0))).zaman_goster
+        };
+        assert!(olc(ZAMAN_ESIGI));
+        assert!(!olc(ZAMAN_ESIGI - 1.0));
+    }
+
+    #[test]
+    fn dugmeler_zaman_sutununun_saginda_kalir() {
+        let alan = Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, SATIR_Y));
+        let sutun = sutunlari_hesapla(alan);
+        let (kopya, yol) = satir_dugmeleri(alan);
+
+        assert_eq!(yol.right(), alan.right() - SAG_PAY);
+        assert_eq!(kopya.right() + BUTON_ARA, yol.left());
+        assert!(
+            kopya.left() - sutun.zaman >= BUTON_SOL_PAY,
+            "zaman sütunu ile düğmeler arasında boşluk kalmalı"
+        );
+        assert!(
+            satir_dugmeleri(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, SATIR_Y)))
+                .0
+                .left()
+                > sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(520.0, SATIR_Y)))
+                    .zaman,
+            "dar pencerede de çakışma olmamalı"
+        );
     }
 
     #[test]
