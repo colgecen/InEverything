@@ -120,6 +120,10 @@ pub struct InEverythingApp {
     sonuclar: Sonuclar,
     satirlar: Vec<Satir>,
     secili: Option<usize>,
+    /// Seçili satırın görünür olması için kaydırma isteği.
+    secili_gorunur: bool,
+    /// Arama kutusu widget'ının kimliği (Ctrl+I ile odak için).
+    arama_kutu_id: egui::Id,
     ilk_cerceve: bool,
     durum_mesaji: String,
     yapilandirma: AppConfig,
@@ -188,6 +192,8 @@ impl InEverythingApp {
             sonuclar: Sonuclar::default(),
             satirlar: Vec::new(),
             secili: None,
+            secili_gorunur: false,
+            arama_kutu_id: egui::Id::new("arama_kutu_baslangic"),
             ilk_cerceve: true,
             durum_mesaji: String::from("İndeks hazırlanıyor..."),
             yapilandirma: yapilandirma.clone(),
@@ -334,6 +340,41 @@ impl InEverythingApp {
             .read()
             .map(|kilit| kilit.kayit_sayisi())
             .unwrap_or(0)
+    }
+
+    /// Seçimi bir sonraki satıra taşır; seçim yoksa en üst satırı seçer.
+    fn asagi_git(&mut self) {
+        if self.satirlar.is_empty() {
+            return;
+        }
+        let konumlar: Vec<usize> = self.satirlar.iter().map(satir_konumu).collect();
+        self.secili = Some(match self.secili {
+            None => konumlar[0],
+            Some(secili) => konumlar
+                .iter()
+                .position(|&k| k == secili)
+                .and_then(|i| konumlar.get(i + 1).copied())
+                .unwrap_or(secili),
+        });
+        self.secili_gorunur = true;
+    }
+
+    /// Seçimi bir önceki satıra taşır; seçim yoksa en alt satırı seçer.
+    fn yukari_git(&mut self) {
+        if self.satirlar.is_empty() {
+            return;
+        }
+        let konumlar: Vec<usize> = self.satirlar.iter().map(satir_konumu).collect();
+        self.secili = Some(match self.secili {
+            None => konumlar[konumlar.len() - 1],
+            Some(secili) => konumlar
+                .iter()
+                .position(|&k| k == secili)
+                .and_then(|i| i.checked_sub(1))
+                .map(|i| konumlar[i])
+                .unwrap_or(secili),
+        });
+        self.secili_gorunur = true;
     }
 
     /// Tamamlanan eylemin durum çubuğu mesajını üretir.
@@ -499,6 +540,7 @@ impl InEverythingApp {
                 .min_size(Vec2::new(0.0, yukseklik)),
         );
 
+        self.arama_kutu_id = yanit.id;
         if self.ilk_cerceve {
             yanit.request_focus();
             self.ilk_cerceve = false;
@@ -940,6 +982,10 @@ impl InEverythingApp {
                             } else if yanit.double_clicked() {
                                 eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
                             }
+                            if secili_konum == Some(konum) && self.secili_gorunur {
+                                ui.scroll_to_rect(yanit.rect, None);
+                                self.secili_gorunur = false;
+                            }
                             yanit.context_menu(|ui| {
                                 if ui.button("Aç").clicked() {
                                     eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
@@ -974,6 +1020,27 @@ impl InEverythingApp {
 impl eframe::App for InEverythingApp {
     fn update(&mut self, ctx: &egui::Context, _cerceve: &mut eframe::Frame) {
         self.kanallari_yokla();
+
+        let (odak_istek, yeniden_tara, asagi, yukari) = ctx.input(|g| {
+            (
+                g.key_pressed(egui::Key::I) && g.modifiers.ctrl,
+                g.key_pressed(egui::Key::F5),
+                g.key_pressed(egui::Key::ArrowDown),
+                g.key_pressed(egui::Key::ArrowUp),
+            )
+        });
+        if odak_istek {
+            ctx.memory_mut(|m| m.request_focus(self.arama_kutu_id));
+        }
+        if yeniden_tara {
+            self.tarama_tetikle(&self.yapilandirma.etkin_kokler());
+        }
+        if asagi {
+            self.asagi_git();
+        }
+        if yukari {
+            self.yukari_git();
+        }
 
         let zaman = ctx.input(|girdi| girdi.time) as f32;
         let taraniyor = self.taraniyor.load(Ordering::Relaxed);
