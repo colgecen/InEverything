@@ -37,13 +37,13 @@ const SUTUN_ARASI: f32 = 20.0;
 /// Boyut sütununun genişliği.
 const BOYUT_EN: f32 = 64.0;
 /// "Değiştirilme" sütununun genişliği.
-const ZAMAN_EN: f32 = 120.0;
+const ZAMAN_EN: f32 = 132.0;
 /// Satır sağındaki "YOLU KOPYALA" düğmesinin genişliği.
-const YOL_KOPYA_EN: f32 = 80.0;
+const YOL_KOPYA_EN: f32 = 88.0;
 /// Satır sağındaki "DOSYAYI KOPYALA" düğmesinin genişliği.
-const DOSYA_KOPYA_EN: f32 = 92.0;
+const DOSYA_KOPYA_EN: f32 = 100.0;
 /// Satır sağındaki "YOLU DEĞİŞTİR" düğmesinin genişliği.
-const YOL_DEGISTIR_EN: f32 = 86.0;
+const YOL_DEGISTIR_EN: f32 = 94.0;
 /// İki eylem düğmesi arasındaki boşluk.
 const BUTON_ARA: f32 = 6.0;
 /// Düğmeler ile zaman sütunu arasındaki boşluk.
@@ -1576,7 +1576,7 @@ mod testler {
         let genis = sutunlari_hesapla(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 400.0)));
         assert_eq!(genis.ad, AD_X);
         assert_eq!(genis.yol, 340.0);
-        assert!(genis.yol_en > 250.0);
+        assert!(genis.yol_en > 200.0);
         assert_eq!(genis.zaman, 1100.0 - SAG_PAY - DUGME_ALANI);
         assert_eq!(genis.boyut, genis.zaman - ZAMAN_EN);
         assert!(genis.zaman_goster, "geniş pencerede zaman görünür");
