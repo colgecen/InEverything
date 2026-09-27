@@ -52,16 +52,9 @@ enum Eylem {
     Ac(PathBuf),
     KonumuAc(PathBuf),
     YoluKopyala(PathBuf),
+    /// Dosyayı dosya yöneticisiyle seçilen klasöre kopyala.
+    DosyaKopyala(PathBuf),
     YoluDegistir(PathBuf),
-}
-
-/// Satırın sağındaki eylem düğmesine basıldığında dönen seçim.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SatirDugmesi {
-    /// Dosya yolunu panoya kopyala.
-    Kopyala,
-    /// Dosyayı başka klasöre taşı (hedef dosya yöneticisiyle seçilir).
-    YoluDegistir,
 }
 
 /// Arayüzde listelenen bir satırın kaynağı.
@@ -348,6 +341,14 @@ impl InEverythingApp {
             Eylem::YoluKopyala(yol) => actions::panoya_yolu_kopyala(&yol)
                 .map(|()| format!("Yol kopyalandı: {}", yol.display()))
                 .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
+            Eylem::DosyaKopyala(kaynak) => {
+                let Some(hedef_klasor) = actions::klasor_sec(kaynak.parent()) else {
+                    return String::from("Kopyalama iptal edildi");
+                };
+                actions::dosyayi_kopyala(&kaynak, &hedef_klasor)
+                    .map(|yeni| format!("Kopyalandı: {}", yeni.display()))
+                    .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}"))
+            }
             Eylem::YoluDegistir(yol) => match actions::yolu_degistir(&yol) {
                 Ok(actions::TasimaSonucu::Iptal) => String::from("Taşıma iptal edildi"),
                 Ok(actions::TasimaSonucu::AyniKlasor) => {
@@ -925,21 +926,12 @@ impl InEverythingApp {
                                     kimlik: ui.id().with(("satir_dugme", konum)),
                                 },
                             );
-                            match dugme {
-                                Some(SatirDugmesi::Kopyala) => {
-                                    eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
-                                }
-                                Some(SatirDugmesi::YoluDegistir) => {
-                                    eylem = Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
-                                }
-                                None => {
-                                    if yanit.clicked() {
-                                        secili_yeni = Some(konum);
-                                    }
-                                    if yanit.double_clicked() {
-                                        eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
-                                    }
-                                }
+                            if let Some(eylem_yeni) = dugme {
+                                eylem = Some(eylem_yeni);
+                            } else if yanit.clicked() {
+                                secili_yeni = Some(konum);
+                            } else if yanit.double_clicked() {
+                                eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
                             }
                             yanit.context_menu(|ui| {
                                 if ui.button("Aç").clicked() {
@@ -1116,7 +1108,7 @@ struct SatirCizim<'a> {
     kimlik: egui::Id,
 }
 
-/// Satırın eylem düğmesini neon temayla çizer; basıldıysa `true` döner.
+/// Satırın eylem düğmesini neon temayla çizer; tıklama için yanıtı döner.
 fn satir_dugmesi_ciz(
     ui: &egui::Ui,
     p: &egui::Painter,
@@ -1124,7 +1116,7 @@ fn satir_dugmesi_ciz(
     kimlik: egui::Id,
     tanim: &DugmeTanimi,
     satir_vurgulu: bool,
-) -> bool {
+) -> egui::Response {
     let DugmeTanimi {
         etiket,
         ipucu,
@@ -1167,18 +1159,18 @@ fn satir_dugmesi_ciz(
         tema::kalin(9.0),
         renk.gamma_multiply(if parlak { 1.0 } else { 0.7 }),
     );
-    yanit.clicked()
+    yanit
 }
 
-/// Bir sonucun satırını neon temayla çizer; sağdaki düğmelere basıldıysa
-/// hangisinin basıldığını döndürür.
+/// Bir sonucun satırını neon temayla çizer; düğmeye basıldıysa veya
+/// kopyala menüsünden bir seçim yapıldıysa tetiklenen eylemi döndürür.
 fn satiri_ciz(
     ui: &egui::Ui,
     p: &egui::Painter,
     alan: Rect,
     yanit: &egui::Response,
     cizim: &SatirCizim<'_>,
-) -> Option<SatirDugmesi> {
+) -> Option<Eylem> {
     let SatirCizim {
         veri,
         secili_mi,
@@ -1314,10 +1306,10 @@ fn satiri_ciz(
         tema::kontur(1.0, tema::CETVEL.gamma_multiply(0.45)),
     );
 
-    // sağdaki eylem düğmeleri: kopyala ve yolu değiştir
+    // sağdaki eylem düğmeleri: kopyala (menülü) ve yolu değiştir
     let kopya_tanim = DugmeTanimi {
         etiket: "KOPYALA",
-        ipucu: "Dosya yolunu panoya kopyala",
+        ipucu: "Yolu veya dosyayı kopyala",
         renk: tema::MOR,
     };
     let yol_tanim = DugmeTanimi {
@@ -1326,15 +1318,46 @@ fn satiri_ciz(
         renk: tema::NEON,
     };
     let (kopya, yol) = satir_dugmeleri(alan);
-    if satir_dugmesi_ciz(
+    let kopya_yanit = satir_dugmesi_ciz(
         ui,
         p,
         kopya,
         kimlik.with("kopyala"),
         &kopya_tanim,
         secili_mi,
-    ) {
-        return Some(SatirDugmesi::Kopyala);
+    );
+    // KOPYALA'ya basılınca "Yolu kopyala" / "Dosyayı kopyala" menüsü açılır.
+    let menu_id = kimlik.with("kopyala_menu");
+    if kopya_yanit.clicked() {
+        ui.memory_mut(|bellek| {
+            if bellek.is_popup_open(menu_id) {
+                bellek.close_popup();
+            } else {
+                bellek.close_popup();
+                bellek.open_popup(menu_id);
+            }
+        });
+    }
+    if ui.memory(|bellek| bellek.is_popup_open(menu_id)) {
+        if let Some(secim) = egui::containers::popup::popup_below_widget(
+            ui,
+            menu_id,
+            &kopya_yanit,
+            egui::containers::popup::PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                let mut secim = None;
+                if ui.button("Yolu kopyala").clicked() {
+                    secim = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
+                }
+                if ui.button("Dosyayı kopyala").clicked() {
+                    secim = Some(Eylem::DosyaKopyala(PathBuf::from(&veri.yol)));
+                }
+                secim
+            },
+        ) {
+            ui.memory_mut(|bellek| bellek.close_popup());
+            return secim;
+        }
     }
     if satir_dugmesi_ciz(
         ui,
@@ -1343,8 +1366,10 @@ fn satiri_ciz(
         kimlik.with("yolu_degistir"),
         &yol_tanim,
         secili_mi,
-    ) {
-        return Some(SatirDugmesi::YoluDegistir);
+    )
+    .clicked()
+    {
+        return Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
     }
     None
 }
