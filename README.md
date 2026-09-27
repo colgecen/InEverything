@@ -12,8 +12,9 @@ Everything benzeri, anlık açılan ultra hızlı dosya arama uygulaması (Rust 
 - Canlı izleme (`notify`): eklenen/silen dosyalar anında yansır, 20 bin değişiklikte indeks otomatik yenilenir
 - Uzantı filtresi (`*.pdf`) ve birleşik sorgu (`*.pdf rapor`)
 - Sanallaştırılmış sonuç listesi (varsayılan 10 bin satır akıcı)
-- Sağ tık menüsü: aç, dosya konumunu aç, yolu kopyala
-- Satır sağında YOLU KOPYALA / DOSYAYI KOPYALA / YOLU DEĞİŞTİR düğmeleri; yolu panoya kopyalama, dosyayı dosya yöneticisiyle seçilen klasöre kopyalama ve dosyayı taşıma
+- Sağ tık menüsü: aç, dosya konumunu aç, yolu kopyala, dosyayı panoya kopyala, yolu değiştir
+- Satır sağında YOLU KOPYALA / DOSYAYI KOPYALA / YOLU DEĞİŞTİR düğmeleri; yolu ve dosyayı panoya kopyalama, dosyayı taşıma
+- Klavye kısayolları: Ctrl+I arama, F5 tara, ↑↓/Home/End gezinme, F1 yol kopyala, F2 dosya kopyala, F3/Enter taşı
 - Futuristik neon tema, gömülü logo, Windows/macOS/Linux desteği
 
 ## Kurulum
@@ -36,12 +37,13 @@ Projenin nasıl kullanılacağına dair örnek:
 ./target/release/InEverything
 ```
 
-Arama kutusuna yazmaya başlayın; sonuçlar yazarken filtrelenir. Satır
-**çift tık** ile dosya açılır, **sağ tık** menüsünde `Aç`,
-`Dosya konumunu aç` ve `Yolu kopyala` bulunur. Satır sağındaki
-**YOLU KOPYALA** panoya kopyalar, **DOSYAYI KOPYALA** dosya yöneticisi
-penceresiyle hedef klasür seçtirip dosyayı oraya kopyalar,
-**YOLU DEĞİŞTİR** ise dosyayı seçilen klasöre taşır.
+Arama kutusuna yazmaya başlayın; sonuçlar yazarken filtrelenir, ilk satır
+otomatik seçilir. Satır **çift tık** ile dosya açılır, **sağ tık** menüsünde
+`Aç`, `Dosya konumunu aç`, `Yolu kopyala`, `Dosyayı panoya kopyala` ve
+`Yolu değiştir` bulunur. Satır sağındaki **YOLU KOPYALA** yolu panoya,
+**DOSYAYI KOPYALA** dosyayı panoya kopyalar, **YOLU DEĞİŞTİR** ise dosyayı
+seçilen klasöre taşır. Klavyeden `↑↓` ile gezinip `F1`/`F2`/`F3` ile aynı
+işlemler yapılır.
 
 Yapılandırma `~/.config/InEverything/config.json`, indeks
 `~/.local/share/InEverything/indeks.bin` altında tutulur.

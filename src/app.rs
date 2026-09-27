@@ -12,7 +12,7 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime};
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Rounding, Sense, Vec2};
 
 use crate::{
@@ -47,7 +47,7 @@ const YOL_DEGISTIR_EN: f32 = 94.0;
 /// İki eylem düğmesi arasındaki boşluk.
 const BUTON_ARA: f32 = 6.0;
 /// Düğmeler ile zaman sütunu arasındaki boşluk.
-const BUTON_SOL_PAY: f32 = 12.0;
+const BUTON_SOL_PAY: f32 = 28.0;
 /// Eylem düğmelerinin kapladığı toplam genişlik (zaman sütunu bunu çıkarır).
 const DUGME_ALANI: f32 =
     YOL_KOPYA_EN + BUTON_ARA + DOSYA_KOPYA_EN + BUTON_ARA + YOL_DEGISTIR_EN + BUTON_SOL_PAY;
@@ -269,13 +269,15 @@ impl InEverythingApp {
 
     /// Kanallardan gelen arama sonuçlarını ve değişiklikleri işler.
     fn kanallari_yokla(&mut self) {
-        match self.arama_sonuc_rx.try_recv() {
-            Ok(sonuclar) => {
-                self.sonuclar = sonuclar;
-                self.satirlari_kur();
-                self.secili = None;
-            }
-            Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
+        // Bekleyen sonuçların en güncesini al; aradakiler bayat sorgulara ait
+        // olabilir. Tek tek uygulamak seçimi her karede başa sarardı.
+        let mut yeni_sonuc = None;
+        while let Ok(sonuclar) = self.arama_sonuc_rx.try_recv() {
+            yeni_sonuc = Some(sonuclar);
+        }
+        if let Some(sonuclar) = yeni_sonuc {
+            self.sonuclar = sonuclar;
+            self.satirlari_kur();
         }
 
         // Tarama bitti: sonuçlar eski indekse ait olabilir.
@@ -287,7 +289,9 @@ impl InEverythingApp {
         }
 
         let mut degisiklik_var = false;
+        let mut canli_degisti = false;
         while let Ok(d) = self.degisiklik_rx.try_recv() {
+            canli_degisti = true;
             if let Ok(mut katman) = self.canli.write() {
                 katman.kaydet(&d);
                 if katman.asildi_mi() && !self.taraniyor.load(Ordering::Relaxed) {
@@ -298,7 +302,13 @@ impl InEverythingApp {
         if degisiklik_var {
             self.tarama_tetikle(&self.yapilandirma.etkin_kokler());
         } else if !self.sorgu_metni.trim().is_empty() {
-            self.aramayi_tetikle();
+            // Her karede arama gönderme: seçim başa sarar ve kanalı şişirir.
+            // Yalnızca sorgu değiştiyse ya da canlı katman değiştiyse ara.
+            if self.sorgu_metni != self.son_sorgu || canli_degisti {
+                self.aramayi_tetikle();
+            }
+        } else if self.sorgu_metni != self.son_sorgu {
+            self.son_sorgu = self.sorgu_metni.clone();
         }
     }
 
@@ -316,6 +326,9 @@ impl InEverythingApp {
     }
 
     /// Sonuç vektöründen çizilecek satır listesini kurar.
+    ///
+    /// Yeni sonuç geldiğinde seçim doğal olarak en üst satıra alınır, böylece
+    /// yön tuşları ve F1/F2/F3 kısayolları ek tuşa gerek kalmadan çalışır.
     fn satirlari_kur(&mut self) {
         self.satirlar.clear();
         self.satirlar.extend(
@@ -332,6 +345,8 @@ impl InEverythingApp {
                 .take(self.yapilandirma.sonuc_limiti)
                 .map(|konum| Satir::Indeks(*konum)),
         );
+        self.secili = self.satirlar.first().map(satir_konumu);
+        self.secili_gorunur = false;
     }
 
     /// İndeksteki kayıt sayısı.
@@ -342,14 +357,16 @@ impl InEverythingApp {
             .unwrap_or(0)
     }
 
-    /// Seçili satırın yolunu döndürür; seçim yoksa en üst satırın yolunu.
+    /// Seçili satırın yolunu döndürür; seçim yoksa ya da bayatsa en üst
+    /// satırın yolunu.
     fn secili_veya_ilk_yolu(&self) -> Option<PathBuf> {
         let satir = match self.secili {
             Some(konum) => self
                 .satirlar
                 .iter()
                 .find(|s| satir_konumu(s) == konum)
-                .copied(),
+                .copied()
+                .or_else(|| self.satirlar.first().copied()),
             None => self.satirlar.first().copied(),
         }?;
         let okunan = self.indeks.read();
@@ -367,6 +384,18 @@ impl InEverythingApp {
     /// Seçimi bir önceki satıra taşır; seçim yoksa en alt satırı seçer.
     fn yukari_git(&mut self) {
         self.secili = onceki_konum(&self.satirlar, self.secili);
+        self.secili_gorunur = true;
+    }
+
+    /// Seçimi en üst satıra alır (Home).
+    fn basa_git(&mut self) {
+        self.secili = self.satirlar.first().map(satir_konumu);
+        self.secili_gorunur = true;
+    }
+
+    /// Seçimi en alt satıra alır (End).
+    fn sona_git(&mut self) {
+        self.secili = self.satirlar.last().map(satir_konumu);
         self.secili_gorunur = true;
     }
 
@@ -537,7 +566,6 @@ impl InEverythingApp {
             if self.sorgu_metni.trim().is_empty() {
                 self.sonuclar = Sonuclar::default();
                 self.satirlari_kur();
-                self.secili = None;
             } else {
                 self.aramayi_tetikle();
             }
@@ -835,7 +863,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, y + 78.0),
             Align2::CENTER_CENTER,
-            "sonuç satırına çift tıklayın · sağdaki YOLU KOPYALA, DOSYAYI KOPYALA ve YOLU DEĞİŞTİR düğmeleri",
+            "↑↓ ile gez · F1 yol · F2 dosya · F3 taşı · veya sağdaki düğmeleri tıklayın",
             tema::mono(11.0),
             tema::METIN_3,
         );
@@ -899,10 +927,10 @@ impl InEverythingApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
                     egui::RichText::new(
-                        "Ctrl+I ara · F5 tara · ↑↓ gez · Ctrl+Shift+C yol · Ctrl+C dosya · Enter taşı",
+                        "Ctrl+I ara · F5 tara · ↑↓ gez · F1 yol · F2 dosya · F3/Enter taşı",
                     )
-                        .font(tema::mono(11.0))
-                        .color(tema::METIN_3),
+                    .font(tema::mono(11.0))
+                    .color(tema::METIN_3),
                 );
                 ui.label(
                     egui::RichText::new(format!("{} sonuç", self.sonuclar.toplam()))
@@ -1015,16 +1043,31 @@ impl eframe::App for InEverythingApp {
     fn update(&mut self, ctx: &egui::Context, _cerceve: &mut eframe::Frame) {
         self.kanallari_yokla();
 
-        let (odak_istek, yeniden_tara, asagi, yukari, ctrl_c, ctrl_shift_c, enter) =
+        // Not: winit, Ctrl+C / Ctrl+Shift+C'yi `Event::Copy`'ye çevirip `Key::C`
+        // olayı üretmez; bu yüzden dosya işlemleri için F1/F2/F3 ve Ctrl+1/2/3
+        // kullanılır. Eski Ctrl+C tabanlı kısayollar da (web gibi Key olayı
+        // gelen platformlar için) yedek olarak dinlenmeye devam eder.
+        let (odak_istek, yeniden_tara, asagi, yukari, basa, sona, yol_kopya, dosya_kopya, tasi) =
             ctx.input(|g| {
+                let ctrl = g.modifiers.ctrl || g.modifiers.command;
+                let eski_yol = g.key_pressed(egui::Key::C) && ctrl && g.modifiers.shift;
+                let eski_dosya = g.key_pressed(egui::Key::C) && ctrl && !g.modifiers.shift;
                 (
-                    g.key_pressed(egui::Key::I) && g.modifiers.ctrl,
+                    g.key_pressed(egui::Key::I) && ctrl,
                     g.key_pressed(egui::Key::F5),
                     g.key_pressed(egui::Key::ArrowDown),
                     g.key_pressed(egui::Key::ArrowUp),
-                    g.key_pressed(egui::Key::C) && g.modifiers.ctrl,
-                    g.key_pressed(egui::Key::C) && g.modifiers.ctrl && g.modifiers.shift,
-                    g.key_pressed(egui::Key::Enter),
+                    g.key_pressed(egui::Key::Home),
+                    g.key_pressed(egui::Key::End),
+                    g.key_pressed(egui::Key::F1)
+                        || (g.key_pressed(egui::Key::Num1) && ctrl)
+                        || eski_yol,
+                    g.key_pressed(egui::Key::F2)
+                        || (g.key_pressed(egui::Key::Num2) && ctrl)
+                        || eski_dosya,
+                    g.key_pressed(egui::Key::Enter)
+                        || g.key_pressed(egui::Key::F3)
+                        || (g.key_pressed(egui::Key::Num3) && ctrl),
                 )
             });
         if odak_istek {
@@ -1039,16 +1082,22 @@ impl eframe::App for InEverythingApp {
         if yukari {
             self.yukari_git();
         }
-        if ctrl_shift_c {
+        if basa {
+            self.basa_git();
+        }
+        if sona {
+            self.sona_git();
+        }
+        if yol_kopya {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
                 self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluKopyala(yol));
             }
-        } else if ctrl_c {
+        } else if dosya_kopya {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
                 self.durum_mesaji = Self::eylemi_uygula(Eylem::DosyaKopyala(yol));
             }
         }
-        if enter {
+        if tasi {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
                 self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluDegistir(yol));
             }
@@ -1400,17 +1449,17 @@ fn satiri_ciz(
     // sağdaki eylem düğmeleri: yolu kopyala, dosyayı kopyala, yolu değiştir
     let yol_tanim = DugmeTanimi {
         etiket: "YOLU KOPYALA",
-        ipucu: "Dosya yolunu panoya kopyala",
+        ipucu: "Dosya yolunu panoya kopyala (F1)",
         renk: tema::TURUNCU,
     };
     let dosya_tanim = DugmeTanimi {
         etiket: "DOSYAYI KOPYALA",
-        ipucu: "Dosyayı panoya kopyala (Ctrl+C gibi)",
+        ipucu: "Dosyayı panoya kopyala (F2)",
         renk: tema::MOR,
     };
     let degistir_tanim = DugmeTanimi {
         etiket: "YOLU DEĞİŞTİR",
-        ipucu: "Dosyayı başka klasöre taşı — hedefi dosya yöneticisinden seç",
+        ipucu: "Dosyayı başka klasöre taşı — hedefi dosya yöneticisinden seç (F3/Enter)",
         renk: tema::NEON,
     };
     let (yol_d, dosya_d, degistir_d) = satir_dugmeleri(alan);
@@ -1462,6 +1511,9 @@ fn satir_konumu(satir: &Satir) -> usize {
 }
 
 /// Seçimi bir sonraki satıra taşır; seçim yoksa en üst satırı seçer.
+///
+/// Seçim artık listede yoksa (bayat sonuç) başa sarar; yoksa yön tuşları
+/// ölü takılırdı.
 fn sonraki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
     if satirlar.is_empty() {
         return None;
@@ -1469,15 +1521,16 @@ fn sonraki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
     let konumlar: Vec<usize> = satirlar.iter().map(satir_konumu).collect();
     Some(match secili {
         None => konumlar[0],
-        Some(secili) => konumlar
-            .iter()
-            .position(|&k| k == secili)
-            .and_then(|i| konumlar.get(i + 1).copied())
-            .unwrap_or(secili),
+        Some(secili) => match konumlar.iter().position(|&k| k == secili) {
+            Some(i) => konumlar.get(i + 1).copied().unwrap_or(secili),
+            None => konumlar[0],
+        },
     })
 }
 
 /// Seçimi bir önceki satıra taşır; seçim yoksa en alt satırı seçer.
+///
+/// Seçim artık listede yoksa (bayat sonuç) en üste döner.
 fn onceki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
     if satirlar.is_empty() {
         return None;
@@ -1485,12 +1538,10 @@ fn onceki_konum(satirlar: &[Satir], secili: Option<usize>) -> Option<usize> {
     let konumlar: Vec<usize> = satirlar.iter().map(satir_konumu).collect();
     Some(match secili {
         None => konumlar[konumlar.len() - 1],
-        Some(secili) => konumlar
-            .iter()
-            .position(|&k| k == secili)
-            .and_then(|i| i.checked_sub(1))
-            .map(|i| konumlar[i])
-            .unwrap_or(secili),
+        Some(secili) => match konumlar.iter().position(|&k| k == secili) {
+            Some(i) => i.checked_sub(1).map(|j| konumlar[j]).unwrap_or(secili),
+            None => konumlar[0],
+        },
     })
 }
 
@@ -1795,5 +1846,47 @@ mod testler {
         assert_eq!(dosya_rengi("main.rs", false), tema::YESIL);
         assert_eq!(dosya_rengi("klasor", true), tema::MOR);
         assert_eq!(dosya_rengi("bilinmiyor", false), tema::METIN_3);
+    }
+
+    #[test]
+    fn islem_zaman_arasi_acik_kalir() {
+        // Kullanıcı şikâyeti: İŞLEM düğmeleri ile DEĞİŞTİRİLME sütunu
+        // birbirine giriyordu. En az 24px nefes payı korunmalı.
+        assert!(
+            BUTON_SOL_PAY >= 24.0,
+            "BUTON_SOL_PAY en az 24 olmalı, aksi halde sütunlar yapışır"
+        );
+        for en in [1100.0, 900.0, 520.0] {
+            let alan = Rect::from_min_size(Pos2::ZERO, Vec2::new(en, SATIR_Y));
+            let sutun = sutunlari_hesapla(alan);
+            let (yol, _, _) = satir_dugmeleri(alan);
+            assert!(
+                yol.left() - sutun.zaman >= 24.0,
+                "{en}px pencerede işlem-zaman arası daraldı"
+            );
+        }
+    }
+
+    #[test]
+    fn yeni_sonuclar_en_ust_satiri_secer() {
+        // Yeni arama sonucu gelince seçim doğal olarak en üst satırda olur;
+        // yön tuşları ve F1/F2/F3 ek tuşa gerek kalmadan çalışır.
+        let satirlar = ornek_satirlar();
+        let ilk = satirlar.first().map(satir_konumu);
+        assert_eq!(ilk, Some(0));
+        assert_eq!(sonraki_konum(&satirlar, ilk), Some(1));
+        assert_eq!(sonraki_konum(&satirlar, None), Some(0));
+    }
+
+    #[test]
+    fn bayat_secim_yon_tuslarini_kilitlemez() {
+        // Sonuçlar yenilenip eski konum listede kalmasa bile ↑↓ çalışmalı:
+        // başa sarar, ölü takılmaz.
+        let satirlar = ornek_satirlar();
+        assert_eq!(sonraki_konum(&satirlar, Some(9999)), Some(0));
+        assert_eq!(onceki_konum(&satirlar, Some(9999)), Some(0));
+        // Sonda takılma yok: sonda ↓ kalır, başta ↑ kalır.
+        assert_eq!(sonraki_konum(&satirlar, Some(3)), Some(3));
+        assert_eq!(onceki_konum(&satirlar, Some(0)), Some(0));
     }
 }
