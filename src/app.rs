@@ -19,6 +19,7 @@ use crate::{
     actions,
     config::AppConfig,
     depo::Indeks,
+    dil::Dil,
     indexer::{self, CanliIzleyici, Degisiklik, TaramaDurumu},
     search::{self, AramaIstegi, CanliKatman, Sonuclar},
     tema,
@@ -53,6 +54,9 @@ const DUGME_ALANI: f32 =
     YOL_KOPYA_EN + BUTON_ARA + DOSYA_KOPYA_EN + BUTON_ARA + YOL_DEGISTIR_EN + BUTON_SOL_PAY;
 /// Pencere bundan darsa "DEĞİŞTİRİLME" sütunu gizlenir, yeri yol sütununa kalır.
 const ZAMAN_ESIGI: f32 = 900.0;
+/// Başlıktaki bilgi çiplerinin sağdaki en fazla ilerleyeceği pay (dil düğmesi
+/// için yer bırakılır).
+const CIP_SAG_PAY: f32 = 50.0;
 
 /// Satırda tetiklenen dosya eylemi.
 enum Eylem {
@@ -127,6 +131,8 @@ pub struct InEverythingApp {
     ilk_cerceve: bool,
     durum_mesaji: String,
     yapilandirma: AppConfig,
+    /// Arayüz dili; değişince tüm yazılar aynı karede yenilenir.
+    dil: Dil,
     ayar_hash: u64,
     indeks_yolu: PathBuf,
     arama_istek_tx: Sender<AramaIstegi>,
@@ -179,6 +185,7 @@ impl InEverythingApp {
         let (degisiklik_tx, degisiklik_rx) = crossbeam_channel::unbounded::<Degisiklik>();
 
         let tarama_iptal = Arc::new(AtomicBool::new(false));
+        let dil = yapilandirma.dil;
         let mut uygulama = Self {
             sorgu_metni: String::new(),
             son_sorgu: String::new(),
@@ -195,8 +202,9 @@ impl InEverythingApp {
             secili_gorunur: false,
             arama_kutu_id: egui::Id::new("arama_kutu_baslangic"),
             ilk_cerceve: true,
-            durum_mesaji: String::from("İndeks hazırlanıyor..."),
+            durum_mesaji: dil.durum_hazirlaniyor(),
             yapilandirma: yapilandirma.clone(),
+            dil,
             ayar_hash,
             indeks_yolu: indeks_yolu.clone(),
             arama_istek_tx,
@@ -209,9 +217,9 @@ impl InEverythingApp {
             uygulama.tarama_tetikle(&kokler);
         } else {
             uygulama.tarama.bitti.store(true, Ordering::Relaxed);
-            uygulama.durum_mesaji = format!(
-                "Diskteki indeks yüklendi: {kayit_sayisi} kayıt, {}.",
-                sureyi_bicimlendir_ms(yukleme_ms)
+            uygulama.durum_mesaji = uygulama.dil.durum_yuklendi(
+                kayit_sayisi,
+                &sureyi_bicimlendir_ms(yukleme_ms, uygulama.dil),
             );
         }
 
@@ -234,7 +242,7 @@ impl InEverythingApp {
         self.tarama.dizin.store(0, Ordering::Relaxed);
         self.tarama.bitti.store(false, Ordering::Relaxed);
         self.taraniyor.store(true, Ordering::Relaxed);
-        self.durum_mesaji = String::from("Tarama başlatıldı...");
+        self.durum_mesaji = self.dil.durum_tarama_basladi();
 
         let durum = self.tarama.clone();
         let indeks = Arc::clone(&self.indeks);
@@ -285,7 +293,8 @@ impl InEverythingApp {
         if nesil != self.son_nesil {
             self.son_nesil = nesil;
             self.aramayi_tetikle();
-            self.durum_mesaji = format!("İndeks yenilendi: {} kayıt", self.indeks_kayit_sayisi());
+            let kayit = self.indeks_kayit_sayisi();
+            self.durum_mesaji = self.dil.durum_indeks_yenilendi(kayit);
         }
 
         let mut degisiklik_var = false;
@@ -399,36 +408,69 @@ impl InEverythingApp {
         self.secili_gorunur = true;
     }
 
+    /// Dili değiştirir ve durum mesajını yeniler.
+    ///
+    /// Tüm yazılar her karede `self.dil` üzerinden okunduğu için değişim
+    /// aynı karede ekrana yansır; yeniden başlatma gerekmez.
+    fn dili_degistir(&mut self) {
+        self.dil = self.dil.diger();
+        let kayit = self.indeks_kayit_sayisi();
+        self.durum_mesaji = self.dil.durum_indeks_yenilendi(kayit);
+    }
+
+    /// Dili değiştirip seçimi kalıcı ayara yazar.
+    ///
+    /// Yazma hatası yok sayılır: dil değişimi o an için geçerlidir, ayar
+    /// bir sonraki açılışta eski değerle dönebilir.
+    fn dili_degistir_kaydet(&mut self) {
+        self.dili_degistir();
+        self.yapilandirma.dil = self.dil;
+        let _ = self.yapilandirma.kaydet();
+    }
+
     /// Tamamlanan eylemin durum çubuğu mesajını üretir.
-    fn eylemi_uygula(eylem: Eylem) -> String {
+    fn eylemi_uygula(dil: Dil, eylem: Eylem) -> String {
         match eylem {
-            Eylem::Ac(yol) => actions::dosyayi_ac(&yol)
-                .map(|()| format!("Açıldı: {}", yol.display()))
-                .unwrap_or_else(|hata| format!("Açılamadı: {hata:#}")),
-            Eylem::KonumuAc(yol) => actions::konumu_ac(&yol)
-                .map(|()| format!("Konum açıldı: {}", yol.display()))
-                .unwrap_or_else(|hata| format!("Konum açılamadı: {hata:#}")),
-            Eylem::YoluKopyala(yol) => actions::panoya_yolu_kopyala(&yol)
-                .map(|()| format!("Yol kopyalandı: {}", yol.display()))
-                .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
-            Eylem::DosyaKopyala(kaynak) => actions::dosyayi_panoya_kopyala(&kaynak)
-                .map(|()| format!("Panoya kopyalandı: {}", kaynak.display()))
-                .unwrap_or_else(|hata| format!("Kopyalanamadı: {hata:#}")),
-            Eylem::YoluDegistir(yol) => match actions::yolu_degistir(&yol) {
-                Ok(actions::TasimaSonucu::Iptal) => String::from("Taşıma iptal edildi"),
+            Eylem::Ac(yol) => {
+                let metin = yol.display().to_string();
+                actions::dosyayi_ac(&yol, dil)
+                    .map(|()| dil.eylem_acildi(&metin))
+                    .unwrap_or_else(|hata| dil.eylem_acilamadi(&metin, &format!("{hata:#}")))
+            }
+            Eylem::KonumuAc(yol) => {
+                let metin = yol.display().to_string();
+                actions::konumu_ac(&yol, dil)
+                    .map(|()| dil.eylem_konum_acildi(&metin))
+                    .unwrap_or_else(|hata| dil.eylem_konum_acilamadi(&metin, &format!("{hata:#}")))
+            }
+            Eylem::YoluKopyala(yol) => {
+                let metin = yol.display().to_string();
+                actions::panoya_yolu_kopyala(&yol, dil)
+                    .map(|()| dil.eylem_yol_kopyalandi(&metin))
+                    .unwrap_or_else(|hata| dil.eylem_kopyalanamadi(&format!("{hata:#}")))
+            }
+            Eylem::DosyaKopyala(kaynak) => {
+                let metin = kaynak.display().to_string();
+                actions::dosyayi_panoya_kopyala(&kaynak, dil)
+                    .map(|()| dil.eylem_panoya_kopyalandi(&metin))
+                    .unwrap_or_else(|hata| dil.eylem_kopyalanamadi(&format!("{hata:#}")))
+            }
+            Eylem::YoluDegistir(yol) => match actions::yolu_degistir(&yol, dil) {
+                Ok(actions::TasimaSonucu::Iptal) => dil.eylem_iptal(),
                 Ok(actions::TasimaSonucu::AyniKlasor) => {
-                    format!("Dosya zaten bu klasörde: {}", yol.display())
+                    dil.eylem_ayni_klasor(&yol.display().to_string())
                 }
                 Ok(actions::TasimaSonucu::Tasindi(yeni)) => {
-                    format!("Taşındı: {}", yeni.display())
+                    dil.eylem_tasindi(&yeni.display().to_string())
                 }
-                Err(hata) => format!("Taşınamadı: {hata:#}"),
+                Err(hata) => dil.eylem_tasinamadi(&format!("{hata:#}")),
             },
         }
     }
 
-    /// Başlık satırı: elmas logo, uygulama adı ve sağdaki bilgi çipleri.
-    fn baslik_satiri(&self, ui: &mut egui::Ui) {
+    /// Başlık satırı: elmas logo, uygulama adı, bilgi çipleri ve en sağda
+    /// yuvarlak dil düğmesi (TR iken `EN`, EN iken `TR`).
+    fn baslik_satiri(&mut self, ui: &mut egui::Ui) {
         let yukseklik = 54.0;
         let (yanit, p) =
             ui.allocate_painter(Vec2::new(ui.available_width(), yukseklik), Sense::hover());
@@ -463,25 +505,26 @@ impl InEverythingApp {
         p.text(
             Pos2::new(sol + 1.0, dikey + 18.0),
             Align2::LEFT_CENTER,
-            "ULTRA HIZLI DOSYA ARAMA MOTORU",
+            self.dil.alt_baslik(),
             tema::mono(10.0),
             tema::METIN_3,
         );
 
-        // sağdaki çipler
+        // sağdaki çipler (en sağda yuvarlak dil düğmesine yer bırakılır)
         let (kayit, boyut, tarama_ms) = self
             .indeks
             .read()
             .map(|k| (k.kayit_sayisi(), k.boyut(), k.tarama_suresi_ms))
             .unwrap_or((0, 0, 0));
-        let mut sag = alan.right();
+        let dil = self.dil;
+        let mut sag = alan.right() - CIP_SAG_PAY;
         let dikey_cip = alan.center().y;
         tema::cip_sagdan(
             ui,
             &p,
             &mut sag,
             dikey_cip,
-            &format!("{kayit} KAYIT"),
+            &dil.kayit_cipi(kayit),
             tema::NEON,
             22.0,
         );
@@ -499,10 +542,50 @@ impl InEverythingApp {
             &p,
             &mut sag,
             dikey_cip,
-            &format!("SON TARAMA {}", sureyi_bicimlendir_ms(tarama_ms as f64)),
+            &dil.son_tarama(&sureyi_bicimlendir_ms(tarama_ms as f64, dil)),
             tema::TURUNCU,
             22.0,
         );
+
+        // en sağ köşede yuvarlak dil düğmesi
+        let dil_alan = dil_dugme_alani(alan);
+        let merkez_dil = dil_alan.center();
+        let cap = dil_alan.width();
+        let yanit_dil = ui
+            .interact(dil_alan, ui.id().with("dil_dugme"), Sense::click())
+            .on_hover_text(dil.dugme_ipucu());
+        let ugrunda = yanit_dil.hovered();
+        let basili = yanit_dil.is_pointer_button_down_on();
+        let dolgu = if basili {
+            tema::NEON.gamma_multiply(0.30)
+        } else if ugrunda {
+            tema::NEON.gamma_multiply(0.20)
+        } else {
+            tema::YUZEY_2
+        };
+        p.circle_filled(merkez_dil, cap * 0.5, dolgu);
+        if ugrunda {
+            p.circle_filled(merkez_dil, cap * 0.5 + 5.0, tema::NEON.gamma_multiply(0.08));
+            p.circle_filled(merkez_dil, cap * 0.5 + 2.0, tema::NEON.gamma_multiply(0.10));
+        }
+        p.circle_stroke(
+            merkez_dil,
+            cap * 0.5,
+            tema::kontur(
+                if ugrunda { 2.0 } else { 1.4 },
+                tema::NEON.gamma_multiply(if ugrunda { 1.0 } else { 0.65 }),
+            ),
+        );
+        p.text(
+            merkez_dil,
+            Align2::CENTER_CENTER,
+            dil.dugme_etiket(),
+            tema::kalin(14.0),
+            if ugrunda { Color32::WHITE } else { tema::NEON },
+        );
+        if yanit_dil.clicked() {
+            self.dili_degistir_kaydet();
+        }
     }
 
     /// Arama kutusu ve tarama düğmesi satırı.
@@ -542,7 +625,7 @@ impl InEverythingApp {
                 .font(tema::mono(15.0))
                 .text_color(tema::METIN)
                 .hint_text(
-                    egui::RichText::new("dosya ara — rapor.pdf, *.png, *belgeler* …")
+                    egui::RichText::new(self.dil.arama_ipucu())
                         .font(tema::mono(13.5))
                         .color(tema::METIN_3),
                 )
@@ -588,7 +671,7 @@ impl InEverythingApp {
         // tarama düğmesi
         let yanit = ui.interact(buton, ui.id().with("yeniden_tara"), Sense::click());
         let yanit = if taraniyor {
-            yanit.on_hover_text("Tarama sürüyor")
+            yanit.on_hover_text(self.dil.tarama_sürüyor())
         } else {
             yanit
         };
@@ -612,9 +695,9 @@ impl InEverythingApp {
             tema::neon_cerceve(ui.painter(), buton, 12.0, tema::NEON, 0.75);
         }
         let etiket = if taraniyor {
-            "TARANIYOR …"
+            self.dil.taraniyor_etiket()
         } else {
-            "⟳  YENİDEN TARA"
+            self.dil.yeniden_tara()
         };
         let renk = if taraniyor {
             tema::MOR.gamma_multiply(0.85)
@@ -662,15 +745,10 @@ impl InEverythingApp {
         );
 
         let metin = if taraniyor {
-            format!(
-                "TARANIYOR · {} dosya · {} klasör · {} dizin",
-                ozet.taranan, ozet.klasor, ozet.dizin
-            )
+            self.dil
+                .taraniyor_durum(ozet.taranan, ozet.klasor, ozet.dizin)
         } else {
-            format!(
-                "INDEKS HAZIR · {indeks_kayit} kayıt · sonuç {}",
-                self.sonuclar.toplam()
-            )
+            self.dil.indeks_hazir(indeks_kayit, self.sonuclar.toplam())
         };
         p.text(
             Pos2::new(alan.left() + 18.0, alan.center().y),
@@ -683,9 +761,9 @@ impl InEverythingApp {
         let mut sag = alan.right();
         let dikey = alan.center().y;
         let (etiket, renk) = if self.yapilandirma.canli_izleme {
-            ("CANLI İZLEME", tema::YESIL)
+            (self.dil.canli_acik(), tema::YESIL)
         } else {
-            ("CANLI KAPALI", tema::METIN_3)
+            (self.dil.canli_kapali(), tema::METIN_3)
         };
         tema::cip_sagdan(ui, &p, &mut sag, dikey, etiket, renk, 20.0);
     }
@@ -747,17 +825,17 @@ impl InEverythingApp {
             (
                 Pos2::new(sutunlar.ad, alan.center().y),
                 Align2::LEFT_CENTER,
-                "DOSYA ADI",
+                self.dil.sutun_dosya(),
             ),
             (
                 Pos2::new(sutunlar.yol, alan.center().y),
                 Align2::LEFT_CENTER,
-                "KONUM",
+                self.dil.sutun_konum(),
             ),
             (
                 Pos2::new(sutunlar.boyut, alan.center().y),
                 Align2::RIGHT_CENTER,
-                "BOYUT",
+                self.dil.sutun_boyut(),
             ),
         ];
         for (konum, hiza, metin) in basliklar {
@@ -767,7 +845,7 @@ impl InEverythingApp {
             p.text(
                 Pos2::new(sutunlar.zaman, alan.center().y),
                 Align2::RIGHT_CENTER,
-                "DEĞİŞTİRİLME",
+                self.dil.sutun_zaman(),
                 font.clone(),
                 tema::METIN_3,
             );
@@ -778,7 +856,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new((yol_d.left() + degistir.right()) * 0.5, alan.center().y),
             Align2::CENTER_CENTER,
-            "İŞLEM",
+            self.dil.sutun_islem(),
             font,
             tema::METIN_3,
         );
@@ -803,20 +881,20 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, baslik_y + 34.0),
             Align2::CENTER_CENTER,
-            "ULTRA HIZLI DOSYA ARAMA MOTORU",
+            self.dil.alt_baslik(),
             tema::mono(11.5),
             tema::METIN_3,
         );
         p.text(
             Pos2::new(merkez.x, merkez.y + 6.0),
             Align2::CENTER_CENTER,
-            "aramaya başlamak için yukarıya yazın",
+            self.dil.bos_aciklama(),
             tema::mono(14.0),
             tema::METIN_2,
         );
 
         // örnek sorgu çipleri
-        let ipuclari = ["*.pdf", "*.png", "rapor", "belgeler", "cmakelists.txt"];
+        let ipuclari: [&str; 5] = self.dil.ornek_sorgular();
         let font = tema::mono(13.0);
         let olcu = |aday: &str| -> f32 {
             ui.fonts(|f| f.layout_no_wrap(aday.to_owned(), font.clone(), tema::NEON))
@@ -863,7 +941,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, y + 78.0),
             Align2::CENTER_CENTER,
-            "↑↓ ile gez · F1 yol · F2 dosya · F3 taşı · veya sağdaki düğmeleri tıklayın",
+            self.dil.bos_ipucu(),
             tema::mono(11.0),
             tema::METIN_3,
         );
@@ -878,7 +956,7 @@ impl InEverythingApp {
             p,
             Pos2::new(merkez.x, merkez.y - 14.0),
             Align2::CENTER_CENTER,
-            "SONUÇ YOK",
+            self.dil.sonuc_yok(),
             tema::kalin(22.0),
             tema::PEMBE,
             0.5,
@@ -893,7 +971,7 @@ impl InEverythingApp {
         p.text(
             Pos2::new(merkez.x, merkez.y + 20.0),
             Align2::CENTER_CENTER,
-            format!("«{sorgu}» için eşleşme bulunamadı"),
+            self.dil.sonuc_yok_aciklama(&sorgu),
             tema::mono(13.0),
             tema::METIN_2,
         );
@@ -926,14 +1004,12 @@ impl InEverythingApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    egui::RichText::new(
-                        "Ctrl+I ara · F5 tara · ↑↓ gez · F1 yol · F2 dosya · F3/Enter taşı",
-                    )
-                    .font(tema::mono(11.0))
-                    .color(tema::METIN_3),
+                    egui::RichText::new(self.dil.alt_kisayollar())
+                        .font(tema::mono(11.0))
+                        .color(tema::METIN_3),
                 );
                 ui.label(
-                    egui::RichText::new(format!("{} sonuç", self.sonuclar.toplam()))
+                    egui::RichText::new(self.dil.sonuc_sayisi(self.sonuclar.toplam()))
                         .font(tema::mono(11.5))
                         .color(tema::NEON),
                 );
@@ -951,6 +1027,7 @@ impl InEverythingApp {
         let mut eylem: Option<Eylem> = None;
         let satirlar = std::mem::take(&mut self.satirlar);
         let bos_sorgu = self.sorgu_metni.trim().is_empty();
+        let dil = self.dil;
 
         if bos_sorgu {
             self.bos_durum(ui);
@@ -991,6 +1068,7 @@ impl InEverythingApp {
                                     secili_mi: secili_konum == Some(konum),
                                     sutunlar: &sutunlar,
                                     kimlik: ui.id().with(("satir_dugme", konum)),
+                                    dil,
                                 },
                             );
                             if let Some(eylem_yeni) = dugme {
@@ -1005,23 +1083,23 @@ impl InEverythingApp {
                                 self.secili_gorunur = false;
                             }
                             yanit.context_menu(|ui| {
-                                if ui.button("Aç").clicked() {
+                                if ui.button(dil.menu_ac()).clicked() {
                                     eylem = Some(Eylem::Ac(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
-                                if ui.button("Dosya konumunu aç").clicked() {
+                                if ui.button(dil.menu_konum()).clicked() {
                                     eylem = Some(Eylem::KonumuAc(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
-                                if ui.button("Yolu kopyala").clicked() {
+                                if ui.button(dil.menu_yol()).clicked() {
                                     eylem = Some(Eylem::YoluKopyala(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
-                                if ui.button("Dosyayı panoya kopyala").clicked() {
+                                if ui.button(dil.menu_dosya()).clicked() {
                                     eylem = Some(Eylem::DosyaKopyala(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
-                                if ui.button("Yolu değiştir…").clicked() {
+                                if ui.button(dil.menu_tasi()).clicked() {
                                     eylem = Some(Eylem::YoluDegistir(PathBuf::from(&veri.yol)));
                                     ui.close_menu();
                                 }
@@ -1034,7 +1112,8 @@ impl InEverythingApp {
         self.satirlar = satirlar;
         self.secili = secili_yeni;
         if let Some(secilen) = eylem {
-            self.durum_mesaji = Self::eylemi_uygula(secilen);
+            let dil = self.dil;
+            self.durum_mesaji = Self::eylemi_uygula(dil, secilen);
         }
     }
 }
@@ -1090,16 +1169,19 @@ impl eframe::App for InEverythingApp {
         }
         if yol_kopya {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
-                self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluKopyala(yol));
+                let dil = self.dil;
+                self.durum_mesaji = Self::eylemi_uygula(dil, Eylem::YoluKopyala(yol));
             }
         } else if dosya_kopya {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
-                self.durum_mesaji = Self::eylemi_uygula(Eylem::DosyaKopyala(yol));
+                let dil = self.dil;
+                self.durum_mesaji = Self::eylemi_uygula(dil, Eylem::DosyaKopyala(yol));
             }
         }
         if tasi {
             if let Some(yol) = self.secili_veya_ilk_yolu() {
-                self.durum_mesaji = Self::eylemi_uygula(Eylem::YoluDegistir(yol));
+                let dil = self.dil;
+                self.durum_mesaji = Self::eylemi_uygula(dil, Eylem::YoluDegistir(yol));
             }
         }
 
@@ -1246,6 +1328,7 @@ struct SatirCizim<'a> {
     secili_mi: bool,
     sutunlar: &'a Sutunlar,
     kimlik: egui::Id,
+    dil: Dil,
 }
 
 /// Satırın eylem düğmesini neon temayla çizer; tıklama için yanıtı döner.
@@ -1316,9 +1399,11 @@ fn satiri_ciz(
         secili_mi,
         sutunlar,
         kimlik,
+        dil,
     } = cizim;
     let secili_mi = *secili_mi;
     let kimlik = *kimlik;
+    let dil = *dil;
     // zemin
     let dolgu = if secili_mi {
         tema::NEON.gamma_multiply(0.15)
@@ -1410,7 +1495,7 @@ fn satiri_ciz(
         if sutunlar.zaman_goster {
             String::from("—")
         } else {
-            String::from("klasör")
+            String::from(dil.klasor_etiket())
         }
     } else {
         boyutu_bicimlendir(veri.boyut)
@@ -1424,9 +1509,9 @@ fn satiri_ciz(
     );
     if sutunlar.zaman_goster {
         let zaman = if veri.klasor {
-            String::from("klasör")
+            String::from(dil.klasor_etiket())
         } else {
-            zamani_bicimlendir(veri.zaman)
+            zamani_bicimlendir(veri.zaman, dil)
         };
         p.text(
             Pos2::new(sutunlar.zaman, alan.center().y),
@@ -1448,18 +1533,18 @@ fn satiri_ciz(
 
     // sağdaki eylem düğmeleri: yolu kopyala, dosyayı kopyala, yolu değiştir
     let yol_tanim = DugmeTanimi {
-        etiket: "YOLU KOPYALA",
-        ipucu: "Dosya yolunu panoya kopyala (F1)",
+        etiket: dil.dugme_yol(),
+        ipucu: dil.ipucu_yol(),
         renk: tema::TURUNCU,
     };
     let dosya_tanim = DugmeTanimi {
-        etiket: "DOSYAYI KOPYALA",
-        ipucu: "Dosyayı panoya kopyala (F2)",
+        etiket: dil.dugme_dosya(),
+        ipucu: dil.ipucu_dosya(),
         renk: tema::MOR,
     };
     let degistir_tanim = DugmeTanimi {
-        etiket: "YOLU DEĞİŞTİR",
-        ipucu: "Dosyayı başka klasöre taşı — hedefi dosya yöneticisinden seç (F3/Enter)",
+        etiket: dil.dugme_tasi(),
+        ipucu: dil.ipucu_tasi(),
         renk: tema::NEON,
     };
     let (yol_d, dosya_d, degistir_d) = satir_dugmeleri(alan);
@@ -1574,6 +1659,19 @@ fn satir_verisi(sonuclar: &Sonuclar, satir: &Satir, kilit: &Indeks) -> Option<Sa
     }
 }
 
+/// Dil düğmesinin çizim alanı: başlık satırının sağ üst köşesindeki daire.
+///
+/// Sağdaki bilgi çiplerine (`alan.right() - CIP_SAG_PAY`'ten sola doğru) binmez.
+fn dil_dugme_alani(alan: Rect) -> Rect {
+    const CAP: f32 = 38.0;
+    /// Sağ kenardaki boşluk.
+    const PAY: f32 = 2.0;
+    Rect::from_center_size(
+        Pos2::new(alan.right() - CAP * 0.5 - PAY, alan.center().y),
+        Vec2::splat(CAP),
+    )
+}
+
 /// Henüz hiç indeks yokken kullanılan boş indeks.
 fn bos_indeks() -> Indeks {
     crate::depo::KayitYazici::yeni().indeks_uret(0, 0, 0)
@@ -1599,9 +1697,9 @@ pub fn boyutu_bicimlendir(bayt: u64) -> String {
 ///
 /// Çok kısa sürelerde (`<10 ms`) onda bir hassasiyet, uzunlarda saniye
 /// gösterilir; 0,1 ms'nin altındaki ölçümler `0 ms` olur.
-pub fn sureyi_bicimlendir_ms(ms: f64) -> String {
+pub fn sureyi_bicimlendir_ms(ms: f64, dil: Dil) -> String {
     if ms >= 1000.0 {
-        format!("{:.1} sn", ms / 1000.0)
+        format!("{:.1} {}", ms / 1000.0, dil.birim_saniye())
     } else if ms >= 10.0 {
         format!("{ms:.0} ms")
     } else {
@@ -1609,8 +1707,8 @@ pub fn sureyi_bicimlendir_ms(ms: f64) -> String {
     }
 }
 
-/// Zamanı göreli metne çevirir (`5 dk önce`), bilinmiyorsa `-`.
-pub fn zamani_bicimlendir(zaman: Option<SystemTime>) -> String {
+/// Zamanı göreli metne çevirir (`5 dk önce` / `5 min ago`), bilinmiyorsa `-`.
+pub fn zamani_bicimlendir(zaman: Option<SystemTime>, dil: Dil) -> String {
     let Some(an) = zaman else {
         return String::from("-");
     };
@@ -1619,13 +1717,13 @@ pub fn zamani_bicimlendir(zaman: Option<SystemTime>) -> String {
     };
     let saniye = gecen.as_secs();
     if saniye < 60 {
-        String::from("az önce")
+        String::from(dil.zaman_az_once())
     } else if saniye < 3600 {
-        format!("{} dk önce", saniye / 60)
+        dil.zaman_dakika(saniye / 60)
     } else if saniye < 86_400 {
-        format!("{} sa önce", saniye / 3600)
+        dil.zaman_saat(saniye / 3600)
     } else {
-        format!("{} g önce", saniye / 86_400)
+        dil.zaman_gun(saniye / 86_400)
     }
 }
 
@@ -1653,11 +1751,13 @@ mod testler {
 
     #[test]
     fn zaman_bilinmiyorsa_tire() {
-        assert_eq!(zamani_bicimlendir(None), "-");
+        assert_eq!(zamani_bicimlendir(None, Dil::Turkce), "-");
         let yakin = SystemTime::now() - Duration::from_secs(10);
-        assert_eq!(zamani_bicimlendir(Some(yakin)), "az önce");
+        assert_eq!(zamani_bicimlendir(Some(yakin), Dil::Turkce), "az önce");
+        assert_eq!(zamani_bicimlendir(Some(yakin), Dil::Ingilizce), "just now");
         let saatler = SystemTime::now() - Duration::from_secs(3 * 3600);
-        assert_eq!(zamani_bicimlendir(Some(saatler)), "3 sa önce");
+        assert_eq!(zamani_bicimlendir(Some(saatler), Dil::Turkce), "3 sa önce");
+        assert_eq!(zamani_bicimlendir(Some(saatler), Dil::Ingilizce), "3 h ago");
     }
 
     #[test]
@@ -1665,6 +1765,36 @@ mod testler {
         assert_eq!(kisalt("abc", 10), "abc");
         assert_eq!(kisalt("abcdef", 6), "abcdef");
         assert_eq!(kisalt("abcdef", 5), "ab...");
+    }
+
+    #[test]
+    fn dil_dugmesi_sag_ust_kosede_ve_ciplere_binmez() {
+        let alan = Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 54.0));
+        let dugme = dil_dugme_alani(alan);
+        // Daire üçgen değil, kare boyutlu ve başlığın sağ üst köşesinde.
+        assert_eq!(dugme.width(), dugme.height());
+        assert!(dugme.width() >= 32.0, "düğme rahat tıklanabilir olmalı");
+        assert!(dugme.max.x <= alan.right(), "düğme başlıktan taşmamalı");
+        assert!(dugme.max.y <= alan.max.y, "düğme başlıktan taşmamalı");
+        assert!(dugme.center().x > alan.center().x, "düğme sağda olmalı");
+        // Bilgi çiplerinin ilerleyebildiği en sağ noktanın solunda kalmalı.
+        assert!(
+            dugme.min.x >= alan.right() - CIP_SAG_PAY,
+            "düğme bilgi çiplerinin üstüne binmemeli"
+        );
+    }
+
+    #[test]
+    fn dil_degisimi_anlik_ve_kayitli() {
+        let (tr, en) = (Dil::Turkce, Dil::Ingilizce);
+        // Düğme etiketi hedef dili gösterir: TR iken EN, EN iken TR.
+        assert_eq!(tr.dugme_etiket(), "EN");
+        assert_eq!(en.dugme_etiket(), "TR");
+        // Yazılar sabit tabloya değil doğrudan `Dil` değerine bağlı; aynı
+        // nesne her karede okunduğu için yeniden yükleme gerekmez.
+        assert_ne!(tr.sutun_dosya(), en.sutun_dosya());
+        assert_ne!(tr.dugme_yol(), en.dugme_yol());
+        assert_ne!(tr.sonuc_sayisi(3), en.sonuc_sayisi(3));
     }
 
     #[test]
@@ -1754,11 +1884,16 @@ mod testler {
 
     #[test]
     fn sure_bicimlendirme_birimleri_dogru() {
-        assert_eq!(sureyi_bicimlendir_ms(0.081), "0.1 ms");
-        assert_eq!(sureyi_bicimlendir_ms(8.4), "8.4 ms");
-        assert_eq!(sureyi_bicimlendir_ms(42.4), "42 ms");
-        assert_eq!(sureyi_bicimlendir_ms(14412.0), "14.4 sn");
-        assert_eq!(sureyi_bicimlendir_ms(666.6), "667 ms");
+        let tr = Dil::Turkce;
+        let en = Dil::Ingilizce;
+        assert_eq!(sureyi_bicimlendir_ms(0.081, tr), "0.1 ms");
+        assert_eq!(sureyi_bicimlendir_ms(8.4, tr), "8.4 ms");
+        assert_eq!(sureyi_bicimlendir_ms(42.4, tr), "42 ms");
+        assert_eq!(sureyi_bicimlendir_ms(14412.0, tr), "14.4 sn");
+        assert_eq!(sureyi_bicimlendir_ms(666.6, tr), "667 ms");
+        // Saniye kısaltması da dile göre değişir.
+        assert_eq!(sureyi_bicimlendir_ms(14412.0, en), "14.4 s");
+        assert_eq!(sureyi_bicimlendir_ms(666.6, en), "667 ms");
     }
 
     #[test]

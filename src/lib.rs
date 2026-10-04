@@ -8,6 +8,7 @@ pub mod actions;
 pub mod app;
 pub mod config;
 pub mod depo;
+pub mod dil;
 pub mod indexer;
 pub mod model;
 pub mod search;

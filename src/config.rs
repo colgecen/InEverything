@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::dil::Dil;
+
 /// Kalıcı uygulama ayarları.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -28,6 +30,8 @@ pub struct AppConfig {
     pub indeks_yasi_saat: u64,
     /// Dosya değişimlerini canlı izle.
     pub canli_izleme: bool,
+    /// Arayüz dili.
+    pub dil: Dil,
 }
 
 impl Default for AppConfig {
@@ -43,6 +47,7 @@ impl Default for AppConfig {
             koyu_tema: true,
             indeks_yasi_saat: 12,
             canli_izleme: true,
+            dil: Dil::default(),
         }
     }
 }
@@ -214,6 +219,7 @@ mod testler {
             koyu_tema: false,
             indeks_yasi_saat: 6,
             canli_izleme: false,
+            dil: crate::dil::Dil::Ingilizce,
         };
         kaynak.kaydet_yola(&yol).expect("kaydet");
         let okunan = AppConfig::yukle_yoldan(&yol).expect("yükle");
@@ -229,6 +235,7 @@ mod testler {
         assert_eq!(okunan.kokler, vec![PathBuf::from("/home")]);
         assert_eq!(okunan.sonuc_limiti, 100);
         assert!(okunan.canli_izleme, "eksik alanlar varsayılana düşmeli");
+        assert_eq!(okunan.dil, crate::dil::Dil::Turkce);
     }
 
     #[test]
