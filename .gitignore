@@ -7,6 +7,11 @@
 # Derlenen çıktılar
 *.exe
 *.msi
+# `./ineverything` betiğinin paketlediği dosyalar
+/build/
+*.AppImage
+*.rpm
+*.tar.gz
 
 # IDE ve editör
 .vscode/

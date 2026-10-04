@@ -1,0 +1,560 @@
+#!/usr/bin/env bash
+#
+# ineverything - InEverything interaktif derleme araci
+#
+# Kullanim:
+#   ./ineverything                    -> once projeyi derler, sonra interaktif
+#                                       menu (OS sec -> format sec -> paketle)
+#   ./ineverything --list             -> gecerli derleme seceneklerini listele
+#   ./ineverything --install          -> ~/.local/bin'e sembolik bag kur,
+#                                        sonra her klasorden `ineverything`
+#   ./ineverything --help             -> yardim
+#
+# Gecerli hedefler:
+#   linux   : appimage | rpm | targz | binary
+#   windows : exe | exe-zip
+#   macos   : app | targz | binary
+#
+# Dogrudan derleme (menusuz):
+#   ./ineverything linux appimage
+#   ./ineverything windows exe-zip
+#   ./ineverything macos app
+#   VERSION=0.3.0 ./ineverything linux targz
+#
+set -euo pipefail
+
+AD="ineverything"
+SURUM=""
+
+# ROOT = betigin bulundugu depo koku. $0 bir sembolik bag olabilir
+# (orn. ~/.local/bin/ineverything), bu yuzden tum baglar cozulur.
+resolve_root() {
+  local src="${BASH_SOURCE[0]}"
+  while [ -L "$src" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+ROOT="$(resolve_root)"
+cd "$ROOT"
+
+[ -f Cargo.toml ] || {
+  echo "HATA: $AD betigi InEverything deposunda calismali (Cargo.toml bulunamadi)." >&2
+  exit 1
+}
+# Surum Cargo.toml'dan okunur; VERSION=... ile ezilebilir.
+SURUM="${VERSION:-$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)}"
+[ -n "$SURUM" ] || SURUM="0.0.0"
+
+BUILD="$ROOT/build"
+ICON="$ROOT/icon.png"
+LOGO="$ROOT/assets/InEverything.jpg"
+
+banner() {
+  echo "=============================================="
+  echo "  InEverything - $AD derleme araci  v$SURUM"
+  echo "=============================================="
+}
+
+usage() {
+  banner
+  echo
+  echo "Kullanim:"
+  echo "  ./$AD                  Once derle, sonra interaktif menu"
+  echo "  ./$AD <os> <format>    Direkt derle"
+  echo "  ./$AD --list           Secenekleri listele"
+  echo "  ./$AD --install        Komutu sisteme kur (her yerden '$AD')"
+  echo "  ./$AD --help           Bu yardim"
+  echo
+  echo "Hedefler:"
+  echo "  linux   : appimage | rpm | targz | binary"
+  echo "  windows : exe | exe-zip"
+  echo "  macos   : app | targz | binary"
+  echo
+  echo "Ornekler:"
+  echo "  ./$AD linux appimage"
+  echo "  ./$AD windows exe-zip"
+  echo "  VERSION=0.3.0 ./$AD linux targz"
+  echo
+  echo "Not: eframe/egui + winit tabanli oldugu icin Windows ve macOS"
+  echo "paketleri kendi isletim sisteminde derlenir. Linux uzerinden"
+  echo "capraz derleme ancak `cross` / `cargo-xwin` kuruluysa denenir."
+}
+
+list_targets() {
+  echo "linux   : appimage (.AppImage) | rpm (.rpm) | targz (.tar.gz) | binary (yalnizca ikili)"
+  echo "windows : exe (.exe) | exe-zip (.exe + .zip)"
+  echo "macos   : app (.app + .zip) | targz (.tar.gz) | binary (yalnizca ikili)"
+}
+
+do_install() {
+  local bindir="$HOME/.local/bin"
+  mkdir -p "$bindir"
+  ln -sf "$ROOT/$AD" "$bindir/$AD"
+  echo "Kuruldu: $bindir/$AD -> $ROOT/$AD"
+  case ":$PATH:" in
+    *":$bindir:"*) echo "PATH zaten '$bindir' iceriyor. Artik her klasorden '$AD' yazabilirsin." ;;
+    *)
+      echo "NOT: '$bindir' PATH'te yok. Su satiri ~/.bashrc'ye ekle:"
+      echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      echo "Sonra yeni terminal ac ya da: source ~/.bashrc"
+      ;;
+  esac
+  echo
+  echo "NOT: derlenmis uygulama ~/.cargo/bin/$AD altindadir. Ikisi de"
+  echo "PATH'te ise '$AD' yazdiginda once hangisi gelirse o calisir."
+}
+
+host_os() {
+  case "$(uname -s)" in
+    Linux) echo linux ;;
+    Darwin) echo macos ;;
+    MINGW*|MSYS*|CYGWIN*) echo windows ;;
+    *) echo linux ;;
+  esac
+}
+
+host_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo x86_64 ;;
+    aarch64|arm64) echo aarch64 ;;
+    *) echo "$(uname -m)" ;;
+  esac
+}
+
+ensure_cargo() {
+  command -v cargo >/dev/null 2>&1 || {
+    echo "HATA: cargo bulunamadi. Rust kur: https://rustup.rs" >&2
+    exit 1
+  }
+}
+
+# capraz derleme yalnizca arac kuruluysa denenir; yoksa kullaniciya
+# neden derlenemedigi acikca soylenir.
+ensure_can_build() {
+  local os="$1" here
+  CAPRAZ=""
+  here="$(host_os)"
+  [ "$os" = "$here" ] && return 0
+
+  if [ "$os" = "windows" ]; then
+    if command -v cargo-xwin >/dev/null 2>&1; then
+      echo "==> capraz derleme: cargo-xwin (x86_64-pc-windows-msvc)"
+      CAPRAZ="xwin"
+      return 0
+    fi
+    if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
+      echo "==> capraz derleme: mingw-w64 (x86_64-pc-windows-gnu)"
+      CAPRAZ="gnu"
+      return 0
+    fi
+  fi
+
+  cat >&2 <<EOF
+HATA: $os paketi bu makinede ($here) derlenemez.
+  eframe/egui + winit pencere araclari hedef isletim sisteminin SDK'sina
+  bagli oldugu icin Linux uzerinden Windows/macOS paketi uretilemez.
+  Secenekler:
+    - $os uzerinde bu betigi calistir:  ./$AD $os <format>
+    - GitHub Actions ile derle (Windows + macOS + Linux isleri):
+      https://github.com/colgecen/InEverything/actions
+    - capraz arac kur: cargo install cargo-xwin   (sadece windows)
+EOF
+  exit 1
+}
+
+# Rust ikilisini release modunda derler (sonuc degerini yazdirmaz).
+cargo_build() {
+  ensure_cargo
+  local here
+  here="$(host_os)"
+  mkdir -p "$BUILD"
+  echo "==> Ikili derleniyor (${CAPRAZ:-yerel}, surum $SURUM)..."
+  case "${CAPRAZ:-}" in
+    xwin)
+      cargo xwin build --release --locked --target x86_64-pc-windows-msvc
+      ;;
+    gnu)
+      cargo build --release --locked --target x86_64-pc-windows-gnu
+      ;;
+    *)
+      cargo build --release --locked
+      ;;
+  esac
+  if [ "$here" = "windows" ]; then
+    IKILI="$BUILD/$AD.exe"
+    [ -f "target/release/$AD.exe" ] && cp -f "target/release/$AD.exe" "$IKILI"
+  else
+    IKILI="$BUILD/$AD"
+    [ -f "target/release/$AD" ] && cp -f "target/release/$AD" "$IKILI"
+  fi
+}
+
+appimagetool_bul() {
+  local ad
+  for ad in "$HOME/.local/bin/appimagetool" "$BUILD/appimagetool" "$(command -v appimagetool 2>/dev/null || true)"; do
+    [ -n "$ad" ] && [ -x "$ad" ] && { echo "$ad"; return 0; }
+  done
+  echo "==> appimagetool indiriliyor..." >&2
+  local arac="$BUILD/appimagetool"
+  if command -v curl >/dev/null 2>&1; then
+    curl -sL "https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage" -o "$arac"
+  else
+    wget -q "https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage" -O "$arac"
+  fi
+  chmod +x "$arac"
+  echo "$arac"
+}
+
+build_linux() {
+  local fmt="$1" mimari
+  mimari="$(host_arch)"
+  cargo_build
+  case "$fmt" in
+    appimage)
+      echo "==> AppImage paketleniyor..."
+      local appdir="$BUILD/InEverything.AppDir" cikti="$BUILD/InEverything-$mimari.AppImage"
+      rm -rf "$appdir" "$cikti"
+      mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" \
+               "$appdir/usr/share/icons/hicolor/512x512/apps"
+      cp "$IKILI" "$appdir/usr/bin/$AD"
+      cp "$ICON" "$appdir/.DirIcon"
+      cp "$ICON" "$appdir/$AD.png"
+      cp "$ICON" "$appdir/usr/share/icons/hicolor/512x512/apps/$AD.png"
+
+      cat > "$appdir/$AD.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=InEverything
+Exec=$AD
+Icon=$AD
+Categories=Utility;FileTools;
+Comment=Everything benzeri, iki dilli ultra hizli dosya arama / Ultra fast bilingual file search (Everything-like)
+EOF
+      cp "$appdir/$AD.desktop" "$appdir/usr/share/applications/"
+
+      cat > "$appdir/AppRun" << EOF
+#!/bin/sh
+HERE="\$(dirname "\$(readlink -f "\$0")")"
+export APPDIR="\$HERE"
+exec "\$HERE/usr/bin/$AD" "\$@"
+EOF
+      chmod +x "$appdir/AppRun"
+
+      local arac
+      arac="$(appimagetool_bul)"
+      ( cd "$BUILD" && "$arac" "InEverything.AppDir" "InEverything-$mimari.AppImage" )
+      rm -rf "$appdir"
+      echo "==> $cikti"
+      ;;
+    rpm)
+      echo "==> RPM paketleniyor..."
+      command -v rpmbuild >/dev/null 2>&1 || {
+        echo "HATA: rpmbuild yok. Kur: sudo dnf install rpm-build  (ya da sudo apt install rpm)" >&2
+        exit 1
+      }
+      rm -rf "$BUILD/rpm"
+      mkdir -p "$BUILD/rpm"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+      cat > "$BUILD/rpm/SPECS/$AD.spec" << EOF
+Name:           $AD
+Version:        $SURUM
+Release:        1%{?dist}
+Summary:        Ultra fast bilingual file search engine (Everything-like)
+License:        MIT
+BuildArch:      $mimari
+%description
+InEverything - kalici indeksli, iki dilli (Turkce/Ingilizce) ultra hizli
+dosya arama ve yonetim uygulamasi.
+%install
+mkdir -p %{buildroot}%{_bindir}
+mkdir -p %{buildroot}%{_datadir}/applications
+mkdir -p %{buildroot}%{_datadir}/icons/hicolor/512x512/apps
+cp "$IKILI" %{buildroot}%{_bindir}/$AD
+cp "$ICON" %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/$AD.png
+cat > %{buildroot}%{_datadir}/applications/$AD.desktop <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=InEverything
+Exec=$AD
+Icon=$AD
+Categories=Utility;FileTools;
+DESKTOP
+%files
+%{_bindir}/$AD
+%{_datadir}/applications/$AD.desktop
+%{_datadir}/icons/hicolor/512x512/apps/$AD.png
+EOF
+      cp "$IKILI" "$BUILD/rpm/SOURCES/$AD"
+      rpmbuild --define "_topdir $BUILD/rpm" -bb "$BUILD/rpm/SPECS/$AD.spec"
+      cp "$BUILD/rpm/RPMS/$mimari/"*.rpm "$BUILD/" 2>/dev/null || true
+      cp "$BUILD/rpm/RPMS/noarch/"*.rpm "$BUILD/" 2>/dev/null || true
+      echo "==> $BUILD/$AD-$SURUM-1.*.rpm"
+      ;;
+    targz)
+      echo "==> tar.gz paketleniyor..."
+      local sahne="$BUILD/${AD}_Linux_$mimari" cikti="$BUILD/${AD}_Linux_$mimari.tar.gz"
+      rm -rf "$sahne" "$cikti"
+      mkdir -p "$sahne"
+      cp "$IKILI" "$sahne/$AD"
+      cp "$LOGO" "$sahne/InEverything.jpg" 2>/dev/null || true
+      cp "$ROOT/README.md" "$sahne/" 2>/dev/null || true
+      cp "$ROOT/LICENSE" "$sahne/" 2>/dev/null || true
+      tar czf "$cikti" -C "$BUILD" "$(basename "$sahne")"
+      echo "==> $cikti"
+      ;;
+    binary)
+      echo "==> $IKILI"
+      ;;
+    *)
+      echo "Bilinmeyen linux formati: $fmt (gecerli: appimage | rpm | targz | binary)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+build_windows() {
+  local fmt="$1"
+  cargo_build
+  case "$fmt" in
+    exe)
+      echo "==> $IKILI"
+      ;;
+    exe-zip|zip)
+      echo "==> zip paketleniyor..."
+      local sahne="$BUILD/${AD}_Windows_x86_64" cikti="$BUILD/${AD}_Windows_x86_64.zip"
+      rm -rf "$sahne" "$cikti"
+      mkdir -p "$sahne"
+      cp "$IKILI" "$sahne/"
+      cp "$ROOT/README.md" "$sahne/" 2>/dev/null || true
+      ( cd "$BUILD" && zip -qr "$(basename "$cikti")" "$(basename "$sahne")" )
+      echo "==> $cikti"
+      ;;
+    *)
+      echo "Bilinmeyen windows formati: $fmt (gecerli: exe | exe-zip)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+build_macos() {
+  local fmt="$1" mimari
+  mimari="$(host_arch)"
+  cargo_build
+  case "$fmt" in
+    app)
+      echo "==> InEverything.app paketleniyor..."
+      local app="$BUILD/InEverything.app" cikti="$BUILD/InEverything-macos-$mimari.zip"
+      rm -rf "$app" "$cikti"
+      mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+      cp "$IKILI" "$app/Contents/MacOS/$AD"
+      cp "$ICON" "$app/Contents/Resources/InEverything.png" 2>/dev/null || true
+      if command -v iconutil >/dev/null 2>&1; then
+        local set="$BUILD/iconset.iconset"
+        rm -rf "$set"; mkdir -p "$set"
+        for boyut in 16 32 128 256 512; do
+          sips -z "$boyut" "$boyut" "$app/Contents/Resources/InEverything.png" \
+               --out "$set/icon_${boyut}x${boyut}.png" >/dev/null 2>&1 || true
+        done
+        cp "$set/icon_512x512.png" "$set/icon_512x512@2x.png" 2>/dev/null || true
+        cp "$set/icon_256x256.png" "$set/icon_256x256@2x.png" 2>/dev/null || true
+        iconutil -c icns "$set" -o "$app/Contents/Resources/InEverything.icns" 2>/dev/null || true
+        rm -rf "$set"
+      fi
+      cat > "$app/Contents/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>InEverything</string>
+    <key>CFBundleDisplayName</key>
+    <string>InEverything</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.ineverything.app</string>
+    <key>CFBundleVersion</key>
+    <string>$SURUM</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$SURUM</string>
+    <key>CFBundleExecutable</key>
+    <string>$AD</string>
+    <key>CFBundleIconFile</key>
+    <string>InEverything</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+EOF
+      ( cd "$BUILD" && zip -qr "$(basename "$cikti")" "InEverything.app" )
+      echo "==> $cikti"
+      ;;
+    targz|tar.gz)
+      echo "==> tar.gz paketleniyor..."
+      local sahne="$BUILD/${AD}_macOS_$mimari" cikti="$BUILD/${AD}_macOS_$mimari.tar.gz"
+      rm -rf "$sahne" "$cikti"
+      mkdir -p "$sahne"
+      cp "$IKILI" "$sahne/$AD"
+      cp "$ROOT/README.md" "$sahne/" 2>/dev/null || true
+      cp "$ROOT/LICENSE" "$sahne/" 2>/dev/null || true
+      tar czf "$cikti" -C "$BUILD" "$(basename "$sahne")"
+      echo "==> $cikti"
+      ;;
+    binary)
+      echo "==> $IKILI"
+      ;;
+    *)
+      echo "Bilinmeyen macos formati: $fmt (gecerli: app | targz | binary)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+build_target() {
+  local os="$1" fmt="$2"
+  banner
+  echo "Hedef: OS=$os  Format=$fmt  Surum=$SURUM"
+  echo
+  ensure_can_build "$os"
+  case "$os" in
+    linux) build_linux "$fmt" ;;
+    windows) build_windows "$fmt" ;;
+    macos|darwin) build_macos "$fmt" ;;
+    *)
+      echo "Bilinmeyen OS: $os (gecerli: linux | windows | macos)" >&2
+      exit 1
+      ;;
+  esac
+  echo
+  echo "Bitti."
+}
+
+interactive() {
+  local buradaki OS FMT
+  buradaki="$(host_os)"
+  banner
+  echo
+  case "$buradaki" in
+    linux)   echo "Bu makine: Linux. Hedef isletim sistemi sec:" ;;
+    windows) echo "Bu makine: Windows. Hedef isletim sistemi sec:" ;;
+    macos)   echo "Bu makine: macOS. Hedef isletim sistemi sec:" ;;
+  esac
+  select os_choice in "Linux" "Windows" "macOS" "Vazgec"; do
+    case "$os_choice" in
+      Linux)   OS="linux"; break ;;
+      Windows) OS="windows"; break ;;
+      macOS)   OS="macos"; break ;;
+      Vazgec|"") echo "Vazgecildi."; exit 0 ;;
+      *) echo "Gecersiz secim, tekrar dene." ;;
+    esac
+  done
+
+  if [ "$OS" != "$buradaki" ]; then
+    echo
+    echo "UYARI: '$OS' bu makinede ($buradaki) derlenemez."
+    echo "       Ilgili isletim sisteminde ya da GitHub Actions ile derlenir."
+    echo "       Yine de denemek ister misin? [e/H]"
+    read -r cevap
+    case "$cevap" in
+      e|E|y|Y) ;;
+      *) echo "Vazgecildi."; exit 0 ;;
+    esac
+  fi
+
+  echo
+  case "$OS" in
+    linux)
+      echo "Paket formati sec:"
+      select f in "AppImage (.AppImage)" "RPM (.rpm)" "tar.gz (.tar.gz)" "Binary only" "Vazgec"; do
+        case "$REPLY" in
+          1) FMT="appimage"; break ;;
+          2) FMT="rpm"; break ;;
+          3) FMT="targz"; break ;;
+          4) FMT="binary"; break ;;
+          5|"") echo "Vazgecildi."; exit 0 ;;
+          *) echo "Gecersiz secim, tekrar dene." ;;
+        esac
+      done
+      ;;
+    windows)
+      echo "Paket formati sec:"
+      select f in ".exe (tasinabilir)" ".exe + .zip" "Vazgec"; do
+        case "$REPLY" in
+          1) FMT="exe"; break ;;
+          2) FMT="exe-zip"; break ;;
+          3|"") echo "Vazgecildi."; exit 0 ;;
+          *) echo "Gecersiz secim, tekrar dene." ;;
+        esac
+      done
+      ;;
+    macos)
+      echo "Paket formati sec:"
+      select f in ".app paketi (.app + .zip)" "tar.gz (.tar.gz)" "Binary only" "Vazgec"; do
+        case "$REPLY" in
+          1) FMT="app"; break ;;
+          2) FMT="targz"; break ;;
+          3) FMT="binary"; break ;;
+          4|"") echo "Vazgecildi."; exit 0 ;;
+          *) echo "Gecersiz secim, tekrar dene." ;;
+        esac
+      done
+      ;;
+  esac
+
+  build_target "$OS" "$FMT"
+}
+
+# ---- arguman yonlendirme ----
+if [ $# -eq 0 ]; then
+  if [ ! -t 0 ]; then
+    echo "HATA: interaktif menu icin terminal gerekli. Secenekler icin: ./$AD --list" >&2
+    exit 1
+  fi
+  banner
+  echo "==> Proje derleniyor (bu makine icin)..."
+  ensure_cargo
+  ( cd "$ROOT" && cargo build --release --locked )
+  echo "Derleme tamam: target/release/$AD"
+  echo
+  interactive
+  exit 0
+fi
+
+case "${1:-}" in
+  -h|--help|help)
+    usage
+    ;;
+  -l|--list|list)
+    list_targets
+    ;;
+  --install|install)
+    do_install
+    ;;
+  --version|-v)
+    echo "$AD $SURUM"
+    ;;
+  linux|windows|macos|darwin)
+    if [ $# -lt 2 ]; then
+      echo "Format eksik. Ornek: ./$AD $1 <format>"
+      list_targets
+      exit 1
+    fi
+    OS="$1"; FMT="$2"
+    # 3. arguman surum: ./ineverything linux appimage 0.3.0
+    if [ $# -ge 3 ]; then
+      SURUM="$3"
+    fi
+    build_target "$OS" "$FMT"
+    ;;
+  *)
+    echo "Bilinmeyen komut: $1"
+    echo
+    usage
+    exit 1
+    ;;
+esac
