@@ -1,10 +1,6 @@
 <h1 align="center">InEverything</h1>
 
-<p align="center">An Everything-inspired, bilingual (Türkçe / English) ultra fast file search and management app for your desktop (Rust + eframe/egui).</p>
-
-<p align="center">
-  <img src="assets/InEverything.jpg" alt="InEverything logo" width="240">
-</p>
+<p align="center">An Everything-inspired file search and management app with a bilingual (Türkçe / English) interface that runs on your desktop (Rust + eframe/egui).</p>
 
 <p align="center">
   <img src="assets/InEverything.gif" alt="InEverything demo" width="700">
@@ -13,15 +9,12 @@
 ## Features
 
 - Persistent index: files are scanned in parallel once and written to a single `mmap`-ed file, so later launches take milliseconds
-- Parallel system scan (`rayon` + work queue); scan roots and excludes come from the config, empty roots scan every volume
-- Allocation-free, lock-free search: raw byte search with `memchr::memmem`, 0-3 scoring, best N results picked with `select_nth_unstable`
+- Allocation-free, lock-free search (`memchr::memmem`) with extension filters (`*.pdf`) and combined queries (`*.pdf report`)
 - Live watch (`notify`): created and deleted files show up instantly, the index refreshes itself after 20k changes
-- Extension filter (`*.pdf`) and combined queries (`*.pdf report`), virtualized result list (10k rows stay smooth)
-- Right-click menu plus per-row buttons: `COPY PATH` / `COPY FILE` / `MOVE` — copy the path or the file itself to the clipboard, or move the file to another folder
-- Keyboard shortcuts: `Ctrl+I` focus search, `F5` rescan, `↑↓`/`Home`/`End` navigate, `F1` copy path, `F2` copy file, `F3`/`Enter` move
-- 2 languages: Turkish and English — the round button in the top-right corner switches the whole interface instantly, with no restart
-- Futuristic neon theme, embedded logo, Windows / macOS / Linux support
-- Single-file installs: AppImage / .rpm / .exe / .app / tar.gz
+- Virtualized result list, right-click menu and per-row buttons: `COPY PATH` / `COPY FILE` / `MOVE`
+- Keyboard shortcuts: `Ctrl+I` search, `F5` rescan, `↑↓` navigate, `F1` copy path, `F2` copy file, `F3`/`Enter` move
+- 2 languages: Turkish and English, switched instantly from the round button in the top-right corner
+- Futuristic neon theme with embedded logo, Windows / macOS / Linux support
 
 ## Installation
 
@@ -30,43 +23,28 @@ Build and run the project locally:
 ```bash
 git clone https://github.com/colgecen/InEverything.git
 cd InEverything
-./ineverything --install
+cargo build --release
 ```
 
-`--install` links the build helper into `~/.local/bin`, so from then on you just type `ineverything` — in any directory. It builds the project, then asks which operating system and package format you want (Linux: AppImage/RPM/tar.gz/binary, Windows: .exe/.exe+zip, macOS: app/tar.gz/binary) and writes the result to `build/`:
+To produce packages with the menu-driven build tool:
 
 ```bash
-ineverything                # build + interactive menu (OS -> format)
-ineverything --list         # every available target
-ineverything linux appimage # build directly, without the menu
-ineverything --install-desktop # add/refresh the desktop entry and launcher icon
+./ineverything --install
+ineverything
 ```
 
-> Do not `cargo install` the app: that would put an `ineverything` binary in `~/.cargo/bin` and shadow the build helper.
-
+Pick a target and format (Linux: AppImage/RPM/tar.gz/binary, Windows: .exe/.exe+zip, macOS: app/tar.gz/binary).
 Prebuilt binaries are on the [releases](https://github.com/colgecen/InEverything/releases) page.
 
 ## Usage
 
-Run the app with:
+Run it with:
 
 ```bash
-cargo run --release        # from source
-./build/ineverything       # a binary produced by the build helper
+./target/release/ineverything
 ```
 
-Start typing in the search box — results filter as you type and the first row is selected automatically. **Double-click** a row to open the file; the right-click menu offers `Open`, `Open file location`, `Copy path`, `Copy file to clipboard` and `Move…`, and the row buttons do the same without the menu.
-
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl+I` | Focus the search box |
-| `F5` | Rescan the filesystem |
-| `↑` `↓` · `Home` `End` | Navigate rows |
-| `F1` · `Ctrl+1` | Copy the path to the clipboard |
-| `F2` · `Ctrl+2` | Copy the file to the clipboard |
-| `F3` · `Enter` · `Ctrl+3` | Move the file (destination picked in the file manager) |
-
-The round button in the top-right corner reads `EN` while the interface is Turkish and `TR` while it is English; every label, menu, status message and unit switches in place. The choice is stored as `dil` (`"tr"` / `"en"`) in `~/.config/InEverything/config.json`, next to the index at `~/.local/share/InEverything/indeks.bin`.
+Start typing in the search box — results filter as you type and the first row is selected automatically. Double-click a row to open the file, use the right-click menu or the row buttons to copy the path, copy the file to the clipboard or move it. The round button in the top-right corner reads `EN` while the interface is Turkish and `TR` while it is English; every label, menu, status message and unit switches in place without a restart.
 
 ## Screenshots
 
