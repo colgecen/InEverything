@@ -9,6 +9,8 @@
 #   ./ineverything --install          -> ~/.local/bin'e sembolik bag kur;
 #                                       sonra her klasorden `ineverything`
 #                                       yazmak yeterli
+#   ./ineverything --install-desktop -> masaustu kaydi + launcher ikonunu
+#                                       (yeniden) kurar/gunceller
 #   ineverything --help               -> yardim
 #
 # Gecerli hedefler:
@@ -73,6 +75,7 @@ usage() {
   echo "  $AD <os> <format>    Direkt derle"
   echo "  $AD --list           Secenekleri listele"
   echo "  $AD --install        Komutu sisteme kur (her yerden '$AD')"
+  echo "  $AD --install-desktop  Masaustu kaydi + launcher ikonunu guncelle"
   echo "  $AD --help           Bu yardim"
   echo
   echo "Hedefler:"
@@ -112,8 +115,56 @@ do_install() {
       ;;
   esac
   echo
-  echo "NOT: derlenmis uygulama ~/.cargo/bin/$AD altindadir. Ikisi de"
-  echo "PATH'te ise '$AD' yazdiginda once hangisi gelirse o calisir."
+  echo "NOT: uygulamayi 'cargo install' ile kurma; ~/.cargo/bin/$AD bu"
+  echo "araci golgeler. Uygulama: cargo run --release  ya da  ./build/$AD"
+}
+
+# Masaustu kaydi + launcher ikonu kurar/gunceller. Eski kurulumlarda
+# ~/.local/share/icons altinda bayat bir ikon kalirsa launcher eski
+# resmi gosterir; bu komut her calistirildiginda yeniler.
+do_install_desktop() {
+  ensure_cargo
+  [ -x "$BUILD/$AD" ] || cargo_build
+  local uygulamalar="$HOME/.local/share/applications"
+  local ikon512="$HOME/.local/share/icons/hicolor/512x512/apps"
+  local ikon256="$HOME/.local/share/icons/hicolor/256x256/apps"
+  mkdir -p "$uygulamalar" "$ikon512" "$ikon256"
+
+  cp "$ICON" "$ikon512/InEverything.png"
+  if command -v ffmpeg >/dev/null 2>&1; then
+    ffmpeg -hide_banner -loglevel error -y -i "$ICON" -vf scale=256:256 "$ikon256/InEverything.png"
+  elif command -v convert >/dev/null 2>&1; then
+    convert "$ICON" -resize 256x256 "$ikon256/InEverything.png"
+  else
+    cp "$ICON" "$ikon256/InEverything.png"
+  fi
+
+  cat > "$uygulamalar/InEverything.desktop" << EOF
+[Desktop Entry]
+Name=InEverything
+Comment=Ultra hizli, iki dilli dosya arama ve yonetim uygulamasi / Ultra fast bilingual file search
+Exec=$BUILD/$AD
+Icon=InEverything
+StartupWMClass=$AD
+Type=Application
+Categories=Utility;FileTools;System;
+Terminal=false
+StartupNotify=true
+Keywords=search;files;arama;dosya;InEverything;
+EOF
+
+  command -v update-desktop-database >/dev/null 2>&1 &&
+    update-desktop-database "$uygulamalar" >/dev/null 2>&1 || true
+
+  echo "Kuruldu: $uygulamalar/InEverything.desktop -> $BUILD/$AD"
+  echo "Ikon:    $ikon256/InEverything.png (256) / $ikon512/InEverything.png (512)"
+  case "$(uname -s)" in
+    Linux)
+      rm -f "$HOME/.cache/icon-cache.kcache" 2>/dev/null || true
+      echo "NOT: KDE ikon onbellegesi temizlendi. Uygulama penceresini"
+      echo "      kapatip yeniden acmak gerekir (ikon pencere acilirken okunur)."
+      ;;
+  esac
 }
 
 host_os() {
@@ -542,6 +593,9 @@ case "${1:-}" in
     ;;
   --install|install)
     do_install
+    ;;
+  --install-desktop|install-desktop)
+    do_install_desktop
     ;;
   --version|-v)
     echo "$AD $SURUM"

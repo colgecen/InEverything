@@ -39,6 +39,7 @@ cd InEverything
 ineverything                # build + interactive menu (OS -> format)
 ineverything --list         # every available target
 ineverything linux appimage # build directly, without the menu
+ineverything --install-desktop # add/refresh the desktop entry and launcher icon
 ```
 
 > Do not `cargo install` the app: that would put an `ineverything` binary in `~/.cargo/bin` and shadow the build helper.
