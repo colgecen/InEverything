@@ -3,6 +3,10 @@
 <p align="center">An Everything-inspired, bilingual (Türkçe / English) ultra fast file search and management app for your desktop (Rust + eframe/egui).</p>
 
 <p align="center">
+  <img src="assets/InEverything.jpg" alt="InEverything logo" width="240">
+</p>
+
+<p align="center">
   <img src="assets/InEverything.gif" alt="InEverything demo" width="700">
 </p>
 
@@ -26,23 +30,28 @@ Build and run the project locally:
 ```bash
 git clone https://github.com/colgecen/InEverything.git
 cd InEverything
-./ineverything
-```
-
-That builds the project, then asks which operating system and package format you want (Linux: AppImage/RPM/tar.gz/binary, Windows: .exe/.exe+zip, macOS: app/tar.gz/binary) and writes the result to `build/`. Install the helper as a command with:
-
-```bash
 ./ineverything --install
 ```
+
+`--install` links the build helper into `~/.local/bin`, so from then on you just type `ineverything` — in any directory. It builds the project, then asks which operating system and package format you want (Linux: AppImage/RPM/tar.gz/binary, Windows: .exe/.exe+zip, macOS: app/tar.gz/binary) and writes the result to `build/`:
+
+```bash
+ineverything                # build + interactive menu (OS -> format)
+ineverything --list         # every available target
+ineverything linux appimage # build directly, without the menu
+```
+
+> Do not `cargo install` the app: that would put an `ineverything` binary in `~/.cargo/bin` and shadow the build helper.
 
 Prebuilt binaries are on the [releases](https://github.com/colgecen/InEverything/releases) page.
 
 ## Usage
 
-Run it with:
+Run the app with:
 
 ```bash
-./target/release/ineverything
+cargo run --release        # from source
+./build/ineverything       # a binary produced by the build helper
 ```
 
 Start typing in the search box — results filter as you type and the first row is selected automatically. **Double-click** a row to open the file; the right-click menu offers `Open`, `Open file location`, `Copy path`, `Copy file to clipboard` and `Move…`, and the row buttons do the same without the menu.

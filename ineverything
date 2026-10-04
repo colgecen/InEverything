@@ -3,12 +3,13 @@
 # ineverything - InEverything interaktif derleme araci
 #
 # Kullanim:
-#   ./ineverything                    -> once projeyi derler, sonra interaktif
+#   ineverything                      -> once projeyi derler, sonra interaktif
 #                                       menu (OS sec -> format sec -> paketle)
-#   ./ineverything --list             -> gecerli derleme seceneklerini listele
-#   ./ineverything --install          -> ~/.local/bin'e sembolik bag kur,
-#                                        sonra her klasorden `ineverything`
-#   ./ineverything --help             -> yardim
+#   ineverything --list               -> gecerli derleme seceneklerini listele
+#   ./ineverything --install          -> ~/.local/bin'e sembolik bag kur;
+#                                       sonra her klasorden `ineverything`
+#                                       yazmak yeterli
+#   ineverything --help               -> yardim
 #
 # Gecerli hedefler:
 #   linux   : appimage | rpm | targz | binary
@@ -16,10 +17,15 @@
 #   macos   : app | targz | binary
 #
 # Dogrudan derleme (menusuz):
-#   ./ineverything linux appimage
-#   ./ineverything windows exe-zip
-#   ./ineverything macos app
-#   VERSION=0.3.0 ./ineverything linux targz
+#   ineverything linux appimage
+#   ineverything windows exe-zip
+#   ineverything macos app
+#   VERSION=0.3.0 ineverything linux targz
+#
+# NOT: Uygulamanin kendisi `ineverything` adiyla kurulmamalidir
+# (`cargo install`); yoksa ~/.cargo/bin/ineverything bu araci golgeleyip
+# derleme menusunu acar. Uygulamayi calistirmak icin:
+#   cargo run --release      ya da      ./build/ineverything
 #
 set -euo pipefail
 
@@ -63,11 +69,11 @@ usage() {
   banner
   echo
   echo "Kullanim:"
-  echo "  ./$AD                  Once derle, sonra interaktif menu"
-  echo "  ./$AD <os> <format>    Direkt derle"
-  echo "  ./$AD --list           Secenekleri listele"
-  echo "  ./$AD --install        Komutu sisteme kur (her yerden '$AD')"
-  echo "  ./$AD --help           Bu yardim"
+  echo "  $AD                  Once derle, sonra interaktif menu"
+  echo "  $AD <os> <format>    Direkt derle"
+  echo "  $AD --list           Secenekleri listele"
+  echo "  $AD --install        Komutu sisteme kur (her yerden '$AD')"
+  echo "  $AD --help           Bu yardim"
   echo
   echo "Hedefler:"
   echo "  linux   : appimage | rpm | targz | binary"
@@ -75,13 +81,15 @@ usage() {
   echo "  macos   : app | targz | binary"
   echo
   echo "Ornekler:"
-  echo "  ./$AD linux appimage"
-  echo "  ./$AD windows exe-zip"
-  echo "  VERSION=0.3.0 ./$AD linux targz"
+  echo "  $AD linux appimage"
+  echo "  $AD windows exe-zip"
+  echo "  VERSION=0.3.0 $AD linux targz"
   echo
   echo "Not: eframe/egui + winit tabanli oldugu icin Windows ve macOS"
   echo "paketleri kendi isletim sisteminde derlenir. Linux uzerinden"
-  echo "capraz derleme ancak `cross` / `cargo-xwin` kuruluysa denenir."
+  echo "capraz derleme ancak 'cross' / 'cargo-xwin' kuruluysa denenir."
+  echo
+  echo "Uygulamanin kendisi: cargo run --release  ya da  ./build/$AD"
 }
 
 list_targets() {
